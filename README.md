@@ -20,7 +20,7 @@ REACT_REVIEW_ROOT=/absolute/path/to/react-project npm start
 PowerShell:
 
 ```powershell
-$env:REACT_REVIEW_ROOT = "C:\\absolute\\path\\to\\react-project"
+$env:REACT_REVIEW_ROOT = "C:\absolute\path\to\react-project"
 npm start
 ```
 
