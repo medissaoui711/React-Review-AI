@@ -97,25 +97,25 @@ function inspect(file, source, sequenceStart = 0) {
       confidence: 'heuristic'
     });
   };
-  source.split(/\\r?\\n/).forEach((line, index) => {
+  source.split(/\r?\n/).forEach((line, index) => {
     const number = index + 1;
     if (/dangerouslySetInnerHTML/.test(line)) add(number, 'High', 'Security', line,
       'Raw HTML insertion can create XSS risk if content is untrusted or unsanitized.',
       'Avoid raw HTML or sanitize through a maintained sanitizer at a clear trust boundary.',
       'Trace data sources and test malicious payloads in an isolated test environment.');
-    if (/<img\\b/.test(line) && !/\\balt\\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
+    if (/<img\b/.test(line) && !/\balt\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
       'Image may lack an alternative text decision.',
       'Add meaningful alt text, or alt="" for decorative images.',
       'Inspect the rendered accessibility tree and test with assistive technology.');
-    if (/<(div|span)\\b[^>]*onClick\\s*=/.test(line) && !/\\b(role|tabIndex)\\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
+    if (/<(div|span)\b[^>]*onClick\s*=/.test(line) && !/\b(role|tabIndex)\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
       'Clickable non-semantic element may not support keyboard interaction or expose control semantics.',
       'Prefer a native button or link; otherwise implement complete semantics, focus, and keyboard behavior.',
       'Test keyboard-only operation and inspect the accessibility tree.');
-    if (/console\\.(log|debug)\\s*\\(/.test(line)) add(number, 'Low', 'Maintainability', line,
+    if (/console\.(log|debug)\s*\(/.test(line)) add(number, 'Low', 'Maintainability', line,
       'Debug logging may expose data or create noisy production output.',
       'Remove temporary logs or use an approved logging policy.',
       'Inspect production build and logging policy.');
-    if (/\\bany\\b/.test(line) && /\\.(ts|tsx)$/.test(file)) add(number, 'Low', 'TypeScript', line,
+    if (/\bany\b/.test(line) && /\.(ts|tsx)$/.test(file)) add(number, 'Low', 'TypeScript', line,
       'The any type disables useful static checks here.',
       'Prefer a precise type, unknown with narrowing, or a generic constraint.',
       'Run TypeScript typechecking and inspect the narrowed type.');
@@ -190,7 +190,7 @@ export async function createReviewService(configuredRoot) {
 
   async function testAudit() {
     const all = await walk(root);
-    const tests = all.filter(file => /\\.(test|spec)\\.[cm]?[jt]sx?$/.test(file));
+    const tests = all.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file));
     const configs = all.filter(file => /(vitest|jest|playwright|cypress)/i.test(path.basename(file)));
     let pkg = {};
     try {
