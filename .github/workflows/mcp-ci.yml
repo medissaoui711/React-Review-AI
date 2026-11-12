@@ -2,7 +2,7 @@ name: React Review AI MCP CI
 
 on:
   push:
-    branches: [main, phase-3.2-secure-file-access]
+    branches: [main, phase-3.2-secure-file-access, phase-3.3-streamable-http]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -157,6 +157,68 @@ jobs:
             await client.close();
           }
           NODE
+
+      - name: MCP Streamable HTTP initialize, tools/list, and tools/call integration test
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        env:
+          MCP_SERVER_ENTRY: ${{ steps.source.outputs.package_dir }}/server/http.mjs
+          REACT_REVIEW_ROOT: ${{ github.workspace }}
+          PORT: 43127
+        run: |
+          set -euo pipefail
+          node "$MCP_SERVER_ENTRY" >/tmp/react-review-ai-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            STATUS="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/mcp || true)"
+            if [ "$STATUS" = "405" ]; then break; fi
+            sleep 0.25
+          done
+          test "${STATUS:-}" = "405"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
+
+          const expected = [
+            'audit_accessibility',
+            'review_component',
+            'review_project',
+            'run_test_audit',
+          ];
+          const transport = new StreamableHTTPClientTransport(
+            new URL('http://127.0.0.1:43127/mcp'),
+          );
+          const client = new Client(
+            { name: 'react-review-ai-http-ci', version: '1.0.0' },
+            { versionNegotiation: { mode: 'auto' } },
+          );
+
+          try {
+            await client.connect(transport);
+            const result = await client.listTools();
+            assert.deepEqual(result.tools.map((tool) => tool.name).sort(), expected);
+            for (const tool of result.tools) {
+              const properties = Object.keys(tool.inputSchema.properties || {}).sort();
+              assert.deepEqual(properties, tool.name === 'review_component' ? ['file_path'] : []);
+            }
+            for (const [name, args] of [
+              ['review_project', {}],
+              ['review_component', { file_path: 'server/index.mjs' }],
+              ['run_test_audit', {}],
+              ['audit_accessibility', {}],
+            ]) {
+              const call = await client.callTool({ name, arguments: args });
+              assert.notEqual(call.isError, true, `HTTP MCP tool call failed: ${name}`);
+              assert.ok((call.content?.length || 0) > 0 || call.structuredContent);
+              console.log(`HTTP tools/call ${name}: PASS`);
+            }
+            console.log('MCP Streamable HTTP initialize: PASS');
+            console.log('MCP Streamable HTTP tools/list: PASS');
+          } finally {
+            await client.close();
+          }
+          NODE
+          cat /tmp/react-review-ai-http.log
 
       - name: Commit source tree and reproducible dependency lock
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
