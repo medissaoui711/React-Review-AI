@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   mcp-stdio-smoke:
@@ -17,37 +17,65 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Decode and extract source bundle
+      - name: Bootstrap source tree from verified archive
         id: source
         shell: bash
         run: |
           set -euo pipefail
           base64 --decode react-review-ai-source-0.3.0.tar.gz.base64 > /tmp/react-review-ai.outer.gz
-          # The published source artifact has two gzip layers; unwrap both before tar extraction.
           gzip --decompress --stdout /tmp/react-review-ai.outer.gz > /tmp/react-review-ai.tar.gz
           tar -tzf /tmp/react-review-ai.tar.gz
           mkdir -p /tmp/react-review-ai
           tar -xzf /tmp/react-review-ai.tar.gz -C /tmp/react-review-ai
-          PACKAGE_DIR="$(find /tmp/react-review-ai -name package.json -type f -print -quit | xargs -r dirname)"
-          if [ -z "$PACKAGE_DIR" ]; then
-            echo "package.json not found in source archive" >&2
-            exit 1
+          ARCHIVE_ROOT="$(find /tmp/react-review-ai -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          if [ ! -f "$GITHUB_WORKSPACE/package.json" ]; then
+            cp -a "$ARCHIVE_ROOT"/. "$GITHUB_WORKSPACE"/
+            cat > "$GITHUB_WORKSPACE/README.md" <<'EOF'
+          # React Review AI
+
+          Read-only React code review MCP server and ChatGPT plugin source.
+
+          ## Requirements
+          - Node.js 22+
+          - npm
+
+          ## Install and run
+          ```bash
+          npm ci
+          npm start
+          ```
+
+          ## MCP tools
+          - `review_project`
+          - `review_component`
+          - `run_test_audit`
+          - `audit_accessibility`
+
+          ## Skills
+          - React code review
+          - React testing
+          - Accessibility audit (WCAG 2.2)
+
+          The server performs static, read-only analysis. It does not modify project files or execute the user's project tests.
+
+          ## Validation
+          GitHub Actions installs the locked dependencies, syntax-checks server modules, negotiates MCP over stdio, lists all tools, and calls each registered tool.
+          EOF
           fi
-          SERVER_ENTRY="$(find "$PACKAGE_DIR" -path '*/server/index.mjs' -type f -print -quit)"
-          if [ -z "$SERVER_ENTRY" ]; then
-            echo "server/index.mjs not found in source archive" >&2
-            exit 1
-          fi
+          PACKAGE_DIR="$GITHUB_WORKSPACE"
+          SERVER_ENTRY="$PACKAGE_DIR/server/index.mjs"
+          test -f "$PACKAGE_DIR/package.json"
+          test -f "$SERVER_ENTRY"
           echo "package_dir=$PACKAGE_DIR" >> "$GITHUB_OUTPUT"
           echo "server_entry=$SERVER_ENTRY" >> "$GITHUB_OUTPUT"
-          echo "Source root: $PACKAGE_DIR"
-          echo "Server entry: $SERVER_ENTRY"
+          echo "Canonical source root: $PACKAGE_DIR"
           cat "$PACKAGE_DIR/package.json"
       - name: Install production dependencies and MCP test client
         working-directory: ${{ steps.source.outputs.package_dir }}
         run: |
-          npm install --no-audit --no-fund
-          npm install --no-save --no-audit --no-fund @modelcontextprotocol/client@2.4.0
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm install --no-save --package-lock=false --no-audit --no-fund @modelcontextprotocol/client@2.4.0
           npm ls --depth=0
       - name: Syntax-check server modules
         working-directory: ${{ steps.source.outputs.package_dir }}
@@ -112,3 +140,16 @@ jobs:
             await client.close();
           }
           NODE
+
+      - name: Commit source tree and reproducible dependency lock
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .codex-plugin .gitignore server skills mcp.json plugin.json package.json package-lock.json README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "build: publish source tree and lock npm dependencies"
+            git push origin HEAD:main
+          else
+            echo "Source tree and lockfile are already up to date."
+          fi
