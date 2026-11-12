@@ -2,6 +2,8 @@ name: React Review AI MCP CI
 
 on:
   push:
+    branches: [main, phase-3.2-secure-file-access]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -40,9 +42,10 @@ jobs:
           - npm
 
           ## Install and run
+          Set REACT_REVIEW_ROOT to the absolute path of the React project to review, then run:
           ```bash
           npm ci
-          npm start
+          REACT_REVIEW_ROOT=/absolute/path/to/project npm start
           ```
 
           ## MCP tools
@@ -51,15 +54,7 @@ jobs:
           - `run_test_audit`
           - `audit_accessibility`
 
-          ## Skills
-          - React code review
-          - React testing
-          - Accessibility audit (WCAG 2.2)
-
-          The server performs static, read-only analysis. It does not modify project files or execute the user's project tests.
-
-          ## Validation
-          GitHub Actions installs the locked dependencies, syntax-checks server modules, negotiates MCP over stdio, lists all tools, and calls each registered tool.
+          The project root is trusted server configuration, not a tool argument. The server performs static, read-only analysis and does not execute project code or tests.
           EOF
           fi
           PACKAGE_DIR="$GITHUB_WORKSPACE"
@@ -89,6 +84,7 @@ jobs:
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
           MCP_SERVER_ENTRY: ${{ steps.source.outputs.server_entry }}
+          REACT_REVIEW_ROOT: ${{ github.workspace }}
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
@@ -101,10 +97,17 @@ jobs:
             'review_project',
             'run_test_audit',
           ];
+          const expectedProperties = {
+            audit_accessibility: [],
+            review_component: ['file_path'],
+            review_project: [],
+            run_test_audit: [],
+          };
 
           const transport = new StdioClientTransport({
             command: process.execPath,
             args: [process.env.MCP_SERVER_ENTRY],
+            env: { ...process.env, REACT_REVIEW_ROOT: process.env.REACT_REVIEW_ROOT },
           });
           const client = new Client(
             { name: 'react-review-ai-ci', version: '1.0.0' },
@@ -119,6 +122,9 @@ jobs:
             for (const tool of result.tools) {
               assert.ok(tool.inputSchema && typeof tool.inputSchema === 'object',
                 `Tool ${tool.name} must publish an input schema`);
+              const properties = Object.keys(tool.inputSchema.properties || {}).sort();
+              assert.deepEqual(properties, expectedProperties[tool.name],
+                `Tool ${tool.name} must not expose a caller-controlled project root`);
             }
             console.log('TOOL_SCHEMAS=' + JSON.stringify(result.tools.map(({ name, inputSchema }) => ({ name, inputSchema }))));
             console.log('MCP initialize: PASS');
@@ -140,13 +146,20 @@ jobs:
               );
               console.log(`MCP tools/call ${name}: PASS`);
             }
+            const attemptedOverride = await client.callTool({
+              name: 'review_project',
+              arguments: { project_root: '/tmp' },
+            });
+            assert.equal(attemptedOverride.isError, true,
+              'Tool callers must not be able to override the configured project root');
+            console.log('MCP project-root override rejection: PASS');
           } finally {
             await client.close();
           }
           NODE
 
       - name: Commit source tree and reproducible dependency lock
-        if: success()
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
