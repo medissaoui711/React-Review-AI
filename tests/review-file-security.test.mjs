@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { reviewFile } from '../server/review.mjs';
+import { createReviewService } from '../server/review.mjs';
 
 async function withProject(run) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-'));
@@ -13,18 +13,36 @@ async function withProject(run) {
   await mkdir(path.join(root, 'src'), { recursive: true });
   await writeFile(outside, 'export default function Outside() { return null; }\n');
   try {
-    await run({ parent, root, outside });
+    const review = await createReviewService(root);
+    await run({ parent, root, outside, review });
   } finally {
     await rm(parent, { recursive: true, force: true });
   }
 }
 
-test('reviewFile accepts a source file inside the trusted project root', async () => {
-  await withProject(async ({ root }) => {
+test('review service requires a configured absolute project root', async () => {
+  await assert.rejects(createReviewService(undefined), /REACT_REVIEW_ROOT must be set/);
+  await assert.rejects(createReviewService('relative/project'), /must be an absolute path/);
+});
+
+test('review service rejects a missing or non-directory root', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-root-'));
+  const file = path.join(parent, 'not-a-directory');
+  await writeFile(file, 'not a directory');
+  try {
+    await assert.rejects(createReviewService(path.join(parent, 'missing')), /existing accessible directory/);
+    await assert.rejects(createReviewService(file), /must point to a directory/);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test('reviewFile accepts a source file inside the configured project root', async () => {
+  await withProject(async ({ root, review }) => {
     const source = 'export function Example() { return <img src="/logo.svg" />; }\n';
     await writeFile(path.join(root, 'src', 'Example.jsx'), source);
 
-    const result = await reviewFile('src/Example.jsx', root);
+    const result = await review.reviewFile('src/Example.jsx');
 
     assert.equal(result.file, 'src/Example.jsx');
     assert.equal(result.mode, 'read-only heuristic');
@@ -33,43 +51,44 @@ test('reviewFile accepts a source file inside the trusted project root', async (
   });
 });
 
-test('reviewFile rejects relative path traversal outside the project root', async () => {
-  await withProject(async ({ root }) => {
-    await assert.rejects(
-      reviewFile('../outside.jsx', root),
-      /Path is outside project root/,
-    );
+test('reviewFile rejects relative path traversal outside the configured root', async () => {
+  await withProject(async ({ review }) => {
+    await assert.rejects(review.reviewFile('../outside.jsx'), /Path is outside project root/);
   });
 });
 
-test('reviewFile rejects absolute paths outside the project root', async () => {
-  await withProject(async ({ root, outside }) => {
-    await assert.rejects(
-      reviewFile(outside, root),
-      /Path is outside project root/,
-    );
+test('reviewFile rejects absolute paths even when the target exists', async () => {
+  await withProject(async ({ outside, review }) => {
+    await assert.rejects(review.reviewFile(outside), /Absolute file paths are not allowed/);
   });
 });
 
-test('reviewFile rejects a symlink that resolves outside the project root', async () => {
-  await withProject(async ({ root, outside }) => {
-    const linkPath = path.join(root, 'src', 'escape.jsx');
-    await symlink(outside, linkPath);
-
-    await assert.rejects(
-      reviewFile('src/escape.jsx', root),
-      /Resolved path is outside project root/,
-    );
+test('reviewFile rejects a symlink that resolves outside the configured root', async () => {
+  await withProject(async ({ root, outside, review }) => {
+    await symlink(outside, path.join(root, 'src', 'escape.jsx'));
+    await assert.rejects(review.reviewFile('src/escape.jsx'), /Resolved path is outside project root/);
   });
 });
 
-test('reviewFile does not modify the reviewed source file', async () => {
-  await withProject(async ({ root }) => {
+test('project inventory ignores a package.json symlink that points outside the root', async () => {
+  await withProject(async ({ root, outside, review }) => {
+    await symlink(outside, path.join(root, 'package.json'));
+    const result = await review.reviewProject();
+    assert.equal(result.detected.react, false);
+    assert.equal(result.project_scope, 'configured trusted project root');
+    assert.equal('project_root' in result, false);
+  });
+});
+
+test('all review operations stay bound to the configured root and do not modify source files', async () => {
+  await withProject(async ({ root, review }) => {
     const file = path.join(root, 'src', 'stable.jsx');
     const original = 'export const stable = true;\n';
     await writeFile(file, original);
 
-    await reviewFile('src/stable.jsx', root);
+    await review.reviewProject();
+    await review.testAudit();
+    await review.accessibilityAudit();
 
     assert.equal(await readFile(file, 'utf8'), original);
   });
