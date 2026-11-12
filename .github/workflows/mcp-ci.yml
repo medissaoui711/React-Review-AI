@@ -74,10 +74,10 @@ jobs:
             command: process.execPath,
             args: [process.env.MCP_SERVER_ENTRY],
           });
-          const client = new Client({
-            name: 'react-review-ai-ci',
-            version: '1.0.0',
-          });
+          const client = new Client(
+            { name: 'react-review-ai-ci', version: '1.0.0' },
+            { versionNegotiation: { mode: 'auto' } },
+          );
 
           try {
             await client.connect(transport);
