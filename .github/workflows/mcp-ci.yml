@@ -17,8 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: '**/package-lock.json'
       - name: Decode and extract source bundle
         id: source
         shell: bash
