@@ -1,0 +1,32 @@
+{
+  "interface": {
+    "capabilities": [],
+    "category": "Developer Tools",
+    "defaultPrompt": [
+      "Review this React project and prioritize actionable findings.",
+      "Audit my React tests and identify coverage gaps.",
+      "Audit this React UI for WCAG 2.2 AA accessibility risks."
+    ],
+    "developerName": "React Review AI",
+    "displayName": "React Review AI",
+    "longDescription": "A read-only React project review plugin. It combines three modular skills for architecture and code quality, testing strategy, and WCAG 2.2 AA accessibility with MCP tools for project inventory, source-file inspection, test-setup inventory, and heuristic accessibility checks. Static findings are explicitly labeled as heuristic; tests, coverage, browser behavior, and WCAG conformance are never claimed unless independently verified.",
+    "shortDescription": "Review React code and quality"
+  },
+  "name": "react-review-ai",
+  "version": "0.3.0",
+  "description": "Read-only React project review with specialized code quality, testing strategy, and WCAG 2.2 AA accessibility skills plus MCP audit tools.",
+  "author": {
+    "name": "React Review AI"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "code-review",
+    "testing",
+    "accessibility",
+    "wcag",
+    "developer-tools"
+  ],
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json"
+}

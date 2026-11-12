@@ -1,20 +1,29 @@
 # React Review AI
 
-Read-only React review plugin source distribution.
+Read-only React code review MCP server and ChatGPT plugin source.
 
-## Source bundle
+## Requirements
+- Node.js 22+
+- npm
 
-The complete Phase 3.1 source tree is stored in `react-review-ai-source-0.3.0.tar.gz.base64` as a Base64-encoded gzip tar archive.
-
-Decode and extract it:
-
+## Install and run
 ```bash
-base64 -d react-review-ai-source-0.3.0.tar.gz.base64 > react-review-ai-source-0.3.0.tar.gz
-tar -xzf react-review-ai-source-0.3.0.tar.gz
+npm ci
+npm start
 ```
 
-The bundle contains the MCP server, plugin manifests, and all three skills.
+## MCP tools
+- `review_project`
+- `review_component`
+- `run_test_audit`
+- `audit_accessibility`
 
-## Phase status
+## Skills
+- React code review
+- React testing
+- Accessibility audit (WCAG 2.2)
 
-Phase 3.1 SDK migration snapshot. Syntax and archive checks passed locally; dependency installation and live MCP SDK runtime/regression validation remain pending.
+The server performs static, read-only analysis. It does not modify project files or execute the user's project tests.
+
+## Validation
+GitHub Actions installs the locked dependencies, syntax-checks server modules, negotiates MCP over stdio, lists all tools, and calls each registered tool.
