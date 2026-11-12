@@ -2,12 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
-import {
-  reviewProject,
-  reviewFile,
-  testAudit,
-  accessibilityAudit
-} from './review.mjs';
+import { createReviewService } from './review.mjs';
 
 const SERVER_INFO = {
   name: 'react-review-ai',
@@ -58,12 +53,17 @@ function registerReadOnlyTool(server, name, config, handler) {
   );
 }
 
-export function createServer() {
+export async function createServer() {
+  // Bind all tools to one canonical root at server startup. Tool arguments
+  // cannot select or replace this root.
+  const review = await createReviewService(process.env.REACT_REVIEW_ROOT);
   const server = new McpServer(
     {
       ...SERVER_INFO,
       instructions: [
         'React Review AI is a read-only static review server.',
+        'All tools are restricted to the single trusted project directory configured by REACT_REVIEW_ROOT at startup.',
+        'Tool callers cannot provide or override the project root.',
         'Findings are heuristic and require human validation.',
         'Tests are inventoried but never executed; coverage is never inferred.',
         'Accessibility checks are not a WCAG conformance assessment.',
@@ -78,12 +78,10 @@ export function createServer() {
     'review_project',
     {
       title: 'Review React Project',
-      description: 'Read-only comprehensive static React project review. Does not execute code or tests.',
-      inputSchema: z.object({
-        project_root: z.string().min(1).optional().describe('Trusted project root; defaults to REACT_REVIEW_ROOT or the process working directory.')
-      }).strict()
+      description: 'Read-only comprehensive static React project review, limited to the trusted REACT_REVIEW_ROOT configured at server startup. No code or tests are executed.',
+      inputSchema: z.object({}).strict()
     },
-    ({ project_root }) => reviewProject(project_root)
+    () => review.reviewProject()
   );
 
   registerReadOnlyTool(
@@ -91,13 +89,12 @@ export function createServer() {
     'review_component',
     {
       title: 'Review React Component',
-      description: 'Review one React source file for common code-quality and accessibility risks. Read-only; no code is executed.',
+      description: 'Review one React source file relative to the trusted REACT_REVIEW_ROOT. Absolute paths and project-root overrides are not accepted.',
       inputSchema: z.object({
-        file_path: z.string().min(1).describe('Path to one source file, relative to the project root.'),
-        project_root: z.string().min(1).optional().describe('Trusted project root; defaults to REACT_REVIEW_ROOT or the process working directory.')
+        file_path: z.string().min(1).describe('Path to one source file, relative to the trusted project root.')
       }).strict()
     },
-    ({ file_path, project_root }) => reviewFile(file_path, project_root)
+    ({ file_path }) => review.reviewFile(file_path)
   );
 
   registerReadOnlyTool(
@@ -105,12 +102,10 @@ export function createServer() {
     'run_test_audit',
     {
       title: 'Audit React Test Setup',
-      description: 'Inventory test files and configuration; does not run tests, scripts, or calculate coverage.',
-      inputSchema: z.object({
-        project_root: z.string().min(1).optional().describe('Trusted project root; defaults to REACT_REVIEW_ROOT or the process working directory.')
-      }).strict()
+      description: 'Inventory test files and configuration within the trusted project root; does not run tests, scripts, or calculate coverage.',
+      inputSchema: z.object({}).strict()
     },
-    ({ project_root }) => testAudit(project_root)
+    () => review.testAudit()
   );
 
   registerReadOnlyTool(
@@ -118,12 +113,10 @@ export function createServer() {
     'audit_accessibility',
     {
       title: 'Audit React Accessibility',
-      description: 'Heuristic static JSX/TSX accessibility audit; not a WCAG conformance claim and not a browser or screen-reader test.',
-      inputSchema: z.object({
-        project_root: z.string().min(1).optional().describe('Trusted project root; defaults to REACT_REVIEW_ROOT or the process working directory.')
-      }).strict()
+      description: 'Heuristic static JSX/TSX accessibility audit within the trusted project root; not a WCAG conformance claim or browser/screen-reader test.',
+      inputSchema: z.object({}).strict()
     },
-    ({ project_root }) => accessibilityAudit(project_root)
+    () => review.accessibilityAudit()
   );
 
   return server;

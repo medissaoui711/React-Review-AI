@@ -6,34 +6,25 @@ const extensions = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const maxFiles = 2500;
 const maxBytes = 500000;
 
-function getRoot(input) {
-  return path.resolve(input || process.env.REACT_REVIEW_ROOT || process.cwd());
-}
-
-async function walk(dir, out = []) {
-  if (out.length >= maxFiles) return out;
-  let entries;
-  try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return out; }
-  for (const entry of entries) {
-    if (out.length >= maxFiles) break;
-    if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
-    const target = path.join(dir, entry.name);
-    if (entry.isDirectory()) await walk(target, out);
-    else if (entry.isFile()) out.push(target);
-  }
-  return out;
-}
-
-async function resolveSafe(rootInput, relativePath) {
-  const root = await fs.realpath(rootInput);
-  const candidate = path.resolve(root, relativePath);
+function assertInside(root, candidate, message = 'Path is outside project root.') {
   if (candidate !== root && !candidate.startsWith(root + path.sep)) {
-    throw new Error('Path is outside project root.');
+    throw new Error(message);
   }
+}
+
+async function resolveSafe(root, relativePath) {
+  if (typeof relativePath !== 'string' || relativePath.trim().length === 0) {
+    throw new Error('A non-empty project-relative file path is required.');
+  }
+  if (path.isAbsolute(relativePath)) {
+    throw new Error('Absolute file paths are not allowed; use a path relative to the configured project root.');
+  }
+  const candidate = path.resolve(root, relativePath);
+  assertInside(root, candidate);
   const realCandidate = await fs.realpath(candidate);
-  if (realCandidate !== root && !realCandidate.startsWith(root + path.sep)) {
-    throw new Error('Resolved path is outside project root.');
-  }
+  assertInside(root, realCandidate, 'Resolved path is outside project root.');
+  const stat = await fs.stat(realCandidate);
+  if (!stat.isFile()) throw new Error('The requested path is not a regular file.');
   return realCandidate;
 }
 
@@ -42,7 +33,58 @@ async function readFileLimited(file) {
     const stat = await fs.stat(file);
     if (!stat.isFile() || stat.size > maxBytes) return null;
     return await fs.readFile(file, 'utf8');
-  } catch { return null; }
+  } catch {
+    return null;
+  }
+}
+
+async function readRelativeFile(root, relativePath) {
+  try {
+    const file = await resolveSafe(root, relativePath);
+    return await readFileLimited(file);
+  } catch {
+    return null;
+  }
+}
+
+async function walk(root, dir = root, out = []) {
+  if (out.length >= maxFiles) return out;
+
+  // Re-check each directory's canonical location before traversing it.
+  let realDir;
+  try {
+    realDir = await fs.realpath(dir);
+    assertInside(root, realDir, 'Resolved directory is outside project root.');
+  } catch {
+    return out;
+  }
+
+  let entries;
+  try {
+    entries = await fs.readdir(realDir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+
+  for (const entry of entries) {
+    if (out.length >= maxFiles) break;
+    if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
+    const target = path.join(realDir, entry.name);
+    if (entry.isDirectory()) {
+      await walk(root, target, out);
+    } else if (entry.isFile()) {
+      // Only retain canonical regular files inside the configured root.
+      try {
+        const realTarget = await fs.realpath(target);
+        assertInside(root, realTarget, 'Resolved file is outside project root.');
+        const stat = await fs.stat(realTarget);
+        if (stat.isFile()) out.push(realTarget);
+      } catch {
+        // Ignore inaccessible, replaced, or out-of-root entries.
+      }
+    }
+  }
+  return out;
 }
 
 function inspect(file, source, sequenceStart = 0) {
@@ -86,80 +128,108 @@ async function sourceFiles(root) {
   return { all, files: all.filter(file => extensions.has(path.extname(file))) };
 }
 
-export async function reviewProject(input) {
-  const root = getRoot(input);
-  const { all, files } = await sourceFiles(root);
-  const findings = [];
-  for (const file of files) {
-    const content = await readFileLimited(file);
-    if (content !== null) findings.push(...inspect(path.relative(root, file), content, findings.length));
+/**
+ * Creates a review service bound to one canonical project root.
+ * The root is supplied by trusted server configuration, never by a tool caller.
+ */
+export async function createReviewService(configuredRoot) {
+  if (typeof configuredRoot !== 'string' || configuredRoot.trim().length === 0) {
+    throw new Error('REACT_REVIEW_ROOT must be set to an absolute project directory before the server starts.');
   }
-  let dependencies = {};
+  if (!path.isAbsolute(configuredRoot)) {
+    throw new Error('REACT_REVIEW_ROOT must be an absolute path.');
+  }
+
+  let root;
   try {
-    const pkg = JSON.parse((await readFileLimited(path.join(root, 'package.json'))) || '{}');
-    dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
-  } catch {}
-  return {
-    product: 'React Review AI', mode: 'read-only static heuristic review', project_root: root,
-    scanned_file_count: all.length, source_file_count: files.length,
-    detected: {
-      react: Boolean(dependencies.react), typescript: Boolean(dependencies.typescript),
-      test_tools: ['vitest', 'jest', '@testing-library/react'].filter(name => Boolean(dependencies[name]))
-    },
-    findings,
-    limitations: [
-      'No source code executed.', 'No tests run and no actual coverage measured.',
-      'Findings are heuristic and require validation.', 'No browser, axe-core, or screen-reader audit performed.'
-    ]
-  };
-}
-
-export async function reviewFile(relativePath, input) {
-  const root = getRoot(input);
-  const file = await resolveSafe(root, relativePath);
-  const content = await readFileLimited(file);
-  if (content === null) throw new Error('File unavailable, too large, or not a regular text file.');
-  return { file: relativePath, mode: 'read-only heuristic', findings: inspect(relativePath, content) };
-}
-
-export async function testAudit(input) {
-  const root = getRoot(input);
-  const all = await walk(root);
-  const tests = all.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file));
-  const configs = all.filter(file => /(vitest|jest|playwright|cypress)/i.test(path.basename(file)));
-  let pkg = {};
-  try { pkg = JSON.parse((await readFileLimited(path.join(root, 'package.json'))) || '{}'); } catch {}
-  const dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
-  return {
-    mode: 'test inventory only', test_file_count: tests.length,
-    test_files: tests.slice(0, 250).map(file => path.relative(root, file)),
-    related_config_files: configs.slice(0, 100).map(file => path.relative(root, file)),
-    detected_frameworks: ['vitest', 'jest', '@testing-library/react', '@playwright/test', 'cypress'].filter(name => Boolean(dependencies[name])),
-    test_scripts: Object.fromEntries(Object.entries(pkg.scripts || {}).filter(([name]) => /test|coverage|e2e/i.test(name))),
-    note: 'No tests executed; no real coverage percentage inferred.'
-  };
-}
-
-export async function accessibilityAudit(input) {
-  const root = getRoot(input);
-  const { files } = await sourceFiles(root);
-  const findings = [];
-  let sequenceCursor = 0;
-  for (const file of files) {
-    const content = await readFileLimited(file);
-    if (content !== null) {
-      const allMatches = inspect(path.relative(root, file), content, sequenceCursor);
-      sequenceCursor += allMatches.length;
-      findings.push(...allMatches.filter(item => item.category === 'Accessibility'));
-    }
+    root = await fs.realpath(configuredRoot);
+  } catch {
+    throw new Error('REACT_REVIEW_ROOT must point to an existing accessible directory.');
   }
-  return {
-    standard_target: 'WCAG 2.2 AA', mode: 'heuristic static JSX/TSX inspection',
-    scanned_source_files: files.length, findings,
-    limitations: [
-      'Not a WCAG conformance assessment.',
-      'Contrast, focus order, dynamic states, and live regions need rendered-page testing.',
-      'Manual keyboard and assistive-technology testing remain necessary.'
-    ]
-  };
+  const rootStat = await fs.stat(root);
+  if (!rootStat.isDirectory()) {
+    throw new Error('REACT_REVIEW_ROOT must point to a directory.');
+  }
+
+  async function reviewProject() {
+    const { all, files } = await sourceFiles(root);
+    const findings = [];
+    for (const file of files) {
+      const relative = path.relative(root, file);
+      const content = await readRelativeFile(root, relative);
+      if (content !== null) findings.push(...inspect(relative, content, findings.length));
+    }
+    let dependencies = {};
+    const packageContent = await readRelativeFile(root, 'package.json');
+    try {
+      const pkg = JSON.parse(packageContent || '{}');
+      dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
+    } catch {}
+    return {
+      product: 'React Review AI', mode: 'read-only static heuristic review',
+      project_scope: 'configured trusted project root',
+      scanned_file_count: all.length, source_file_count: files.length,
+      detected: {
+        react: Boolean(dependencies.react), typescript: Boolean(dependencies.typescript),
+        test_tools: ['vitest', 'jest', '@testing-library/react'].filter(name => Boolean(dependencies[name]))
+      },
+      findings,
+      limitations: [
+        'No source code executed.', 'No tests run and no actual coverage measured.',
+        'Findings are heuristic and require validation.', 'No browser, axe-core, or screen-reader audit performed.'
+      ]
+    };
+  }
+
+  async function reviewFile(relativePath) {
+    const file = await resolveSafe(root, relativePath);
+    const content = await readFileLimited(file);
+    if (content === null) throw new Error('File unavailable, too large, or not a regular text file.');
+    return { file: path.relative(root, file), mode: 'read-only heuristic', findings: inspect(path.relative(root, file), content) };
+  }
+
+  async function testAudit() {
+    const all = await walk(root);
+    const tests = all.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file));
+    const configs = all.filter(file => /(vitest|jest|playwright|cypress)/i.test(path.basename(file)));
+    let pkg = {};
+    try {
+      pkg = JSON.parse((await readRelativeFile(root, 'package.json')) || '{}');
+    } catch {}
+    const dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
+    return {
+      mode: 'test inventory only', test_file_count: tests.length,
+      test_files: tests.slice(0, 250).map(file => path.relative(root, file)),
+      related_config_files: configs.slice(0, 100).map(file => path.relative(root, file)),
+      detected_frameworks: ['vitest', 'jest', '@testing-library/react', '@playwright/test', 'cypress'].filter(name => Boolean(dependencies[name])),
+      test_scripts: Object.fromEntries(Object.entries(pkg.scripts || {}).filter(([name]) => /test|coverage|e2e/i.test(name))),
+      note: 'No tests executed; no real coverage percentage inferred.'
+    };
+  }
+
+  async function accessibilityAudit() {
+    const { files } = await sourceFiles(root);
+    const findings = [];
+    let sequenceCursor = 0;
+    for (const file of files) {
+      const relative = path.relative(root, file);
+      const content = await readRelativeFile(root, relative);
+      if (content !== null) {
+        const allMatches = inspect(relative, content, sequenceCursor);
+        sequenceCursor += allMatches.length;
+        findings.push(...allMatches.filter(item => item.category === 'Accessibility'));
+      }
+    }
+    return {
+      standard_target: 'WCAG 2.2 AA', mode: 'heuristic static JSX/TSX inspection',
+      scanned_source_files: files.length, findings,
+      limitations: [
+        'Not a WCAG conformance assessment.',
+        'Contrast, focus order, dynamic states, and live regions need rendered-page testing.',
+        'Manual keyboard and assistive-technology testing remain necessary.'
+      ]
+    };
+  }
+
+  return Object.freeze({ reviewProject, reviewFile, testAudit, accessibilityAudit });
 }

@@ -4,8 +4,13 @@
     "react-review-ai-local": {
       "type": "stdio",
       "command": "node",
-      "args": ["${PLUGIN_ROOT}/server/index.mjs"],
-      "cwd": "${PLUGIN_ROOT}/server"
+      "args": [
+        "${PLUGIN_ROOT}/server/index.mjs"
+      ],
+      "cwd": "${PLUGIN_ROOT}/server",
+      "env": {
+        "REACT_REVIEW_ROOT": "${REACT_REVIEW_ROOT}"
+      }
     }
   }
 }
