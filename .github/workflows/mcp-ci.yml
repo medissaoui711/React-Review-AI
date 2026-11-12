@@ -88,6 +88,7 @@ jobs:
               assert.ok(tool.inputSchema && typeof tool.inputSchema === 'object',
                 `Tool ${tool.name} must publish an input schema`);
             }
+            console.log('TOOL_SCHEMAS=' + JSON.stringify(result.tools.map(({ name, inputSchema }) => ({ name, inputSchema }))));
             console.log('MCP initialize: PASS');
             console.log('MCP tools/list: PASS');
             console.log(`Registered tools: ${actual.join(', ')}`);
