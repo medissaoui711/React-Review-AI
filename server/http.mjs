@@ -35,6 +35,13 @@ export function createHttpServer() {
       const originRejection = originValidationResponse(request, ORIGIN_ALLOWLIST);
       if (originRejection) return originRejection;
 
+      if (request.method.toUpperCase() !== 'POST') {
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: 'POST' }
+        });
+      }
+
       return mcp.fetch(request);
     }
   };
