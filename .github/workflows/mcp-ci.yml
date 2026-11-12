@@ -1,0 +1,97 @@
+name: React Review AI MCP CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mcp-stdio-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+      - name: Decode and extract source bundle
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode react-review-ai-source-0.3.0.tar.gz.base64 > /tmp/react-review-ai.tar.gz
+          tar -tzf /tmp/react-review-ai.tar.gz
+          mkdir -p /tmp/react-review-ai
+          tar -xzf /tmp/react-review-ai.tar.gz -C /tmp/react-review-ai
+          PACKAGE_DIR="$(find /tmp/react-review-ai -name package.json -type f -print -quit | xargs -r dirname)"
+          if [ -z "$PACKAGE_DIR" ]; then
+            echo "package.json not found in source archive" >&2
+            exit 1
+          fi
+          SERVER_ENTRY="$(find "$PACKAGE_DIR" -path '*/server/index.mjs' -type f -print -quit)"
+          if [ -z "$SERVER_ENTRY" ]; then
+            echo "server/index.mjs not found in source archive" >&2
+            exit 1
+          fi
+          echo "package_dir=$PACKAGE_DIR" >> "$GITHUB_OUTPUT"
+          echo "server_entry=$SERVER_ENTRY" >> "$GITHUB_OUTPUT"
+          echo "Source root: $PACKAGE_DIR"
+          echo "Server entry: $SERVER_ENTRY"
+          cat "$PACKAGE_DIR/package.json"
+      - name: Install production dependencies and MCP test client
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        run: |
+          npm install --no-audit --no-fund
+          npm install --no-save --no-audit --no-fund @modelcontextprotocol/client@2.4.0
+          npm ls --depth=0
+      - name: Syntax-check server modules
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        run: |
+          find server -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check
+      - name: MCP stdio initialize and tools/list integration test
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        env:
+          MCP_SERVER_ENTRY: ${{ steps.source.outputs.server_entry }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Client } from '@modelcontextprotocol/client';
+          import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+
+          const expected = [
+            'audit_accessibility',
+            'review_component',
+            'review_project',
+            'run_test_audit',
+          ];
+
+          const transport = new StdioClientTransport({
+            command: process.execPath,
+            args: [process.env.MCP_SERVER_ENTRY],
+          });
+          const client = new Client({
+            name: 'react-review-ai-ci',
+            version: '1.0.0',
+          });
+
+          try {
+            await client.connect(transport);
+            const result = await client.listTools();
+            const actual = result.tools.map((tool) => tool.name).sort();
+            assert.deepEqual(actual, expected, 'MCP tools/list must expose all four stable tools');
+            for (const tool of result.tools) {
+              assert.ok(tool.inputSchema && typeof tool.inputSchema === 'object',
+                `Tool ${tool.name} must publish an input schema`);
+            }
+            console.log('MCP initialize: PASS');
+            console.log('MCP tools/list: PASS');
+            console.log(`Registered tools: ${actual.join(', ')}`);
+          } finally {
+            await client.close();
+          }
+          NODE
