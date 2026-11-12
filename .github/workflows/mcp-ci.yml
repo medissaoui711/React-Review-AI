@@ -92,6 +92,22 @@ jobs:
             console.log('MCP initialize: PASS');
             console.log('MCP tools/list: PASS');
             console.log(`Registered tools: ${actual.join(', ')}`);
+
+            const smokeCalls = [
+              ['review_project', {}],
+              ['review_component', { file_path: 'server/index.mjs' }],
+              ['run_test_audit', {}],
+              ['audit_accessibility', {}],
+            ];
+            for (const [name, args] of smokeCalls) {
+              const call = await client.callTool({ name, arguments: args });
+              assert.notEqual(call.isError, true, `MCP tool call failed: ${name}`);
+              assert.ok(
+                (Array.isArray(call.content) && call.content.length > 0) || call.structuredContent,
+                `MCP tool ${name} must return content or structuredContent`,
+              );
+              console.log(`MCP tools/call ${name}: PASS`);
+            }
           } finally {
             await client.close();
           }
