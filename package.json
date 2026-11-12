@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node server/index.mjs",
-    "check": "node --check server/index.mjs && node --check server/review.mjs"
+    "check": "node --check server/index.mjs && node --check server/review.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
