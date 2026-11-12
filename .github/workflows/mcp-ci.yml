@@ -81,6 +81,10 @@ jobs:
         working-directory: ${{ steps.source.outputs.package_dir }}
         run: |
           find server -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check
+      - name: Run security and regression tests
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        run: npm test
+
       - name: MCP stdio initialize and tools/list integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
@@ -146,7 +150,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .codex-plugin .gitignore server skills mcp.json plugin.json package.json package-lock.json README.md
+          git add .codex-plugin .gitignore server skills tests mcp.json plugin.json package.json package-lock.json README.md
           if ! git diff --cached --quiet; then
             git commit -m "build: publish source tree and lock npm dependencies"
             git push origin HEAD:main
