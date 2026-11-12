@@ -22,20 +22,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode react-review-ai-source-0.3.0.tar.gz.base64 > /tmp/react-review-ai.tar.gz
-          python3 - <<'PY'
-          import gzip
-          from pathlib import Path
-          p = Path('/tmp/react-review-ai.tar.gz')
-          raw = p.read_bytes()
-          print('decoded archive bytes:', len(raw), 'prefix:', raw[:24].hex())
-          try:
-              unpacked = gzip.decompress(raw)
-              print('gzip payload bytes:', len(unpacked), 'prefix:', unpacked[:48].hex(), 'preview:', repr(unpacked[:48]))
-          except Exception as exc:
-              print('gzip validation failed:', repr(exc))
-              raise
-          PY
+          base64 --decode react-review-ai-source-0.3.0.tar.gz.base64 > /tmp/react-review-ai.outer.gz
+          # The published source artifact has two gzip layers; unwrap both before tar extraction.
+          gzip --decompress --stdout /tmp/react-review-ai.outer.gz > /tmp/react-review-ai.tar.gz
           tar -tzf /tmp/react-review-ai.tar.gz
           mkdir -p /tmp/react-review-ai
           tar -xzf /tmp/react-review-ai.tar.gz -C /tmp/react-review-ai
