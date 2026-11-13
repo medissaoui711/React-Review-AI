@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   codeql:
-    name: CodeQL (\${{ matrix.language }})
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -36,12 +36,12 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
-          languages: \${{ matrix.language }}
+          languages: ${{ matrix.language }}
           build-mode: none
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
-          category: "/language:\${{ matrix.language }}"
+          category: "/language:${{ matrix.language }}"
 
   dependency-review:
     name: Dependency Review
@@ -101,12 +101,12 @@ jobs:
             packages
           };
           fs.writeFileSync('artifacts/license-inventory.json', JSON.stringify(inventory, null, 2) + '\n');
-          console.log(\`Inventoried \${packages.length} locked packages; \${inventory.unknown_license_count} have no declared license metadata.\`);
+          console.log(\`Inventoried ${packages.length} locked packages; ${inventory.unknown_license_count} have no declared license metadata.\`);
           NODE
       - name: Upload SBOM and license inventory
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: react-review-ai-supply-chain-\${{ github.sha }}
+          name: react-review-ai-supply-chain-${{ github.sha }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30
