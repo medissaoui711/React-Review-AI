@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { createReviewService } from './review.mjs';
+import { readAuthConfig } from './auth.mjs';
 
 const SERVER_INFO = { name: 'react-review-ai', version: '0.6.0' };
 const findingSchema = z.object({
@@ -50,11 +51,20 @@ const READ_ONLY_ANNOTATIONS = {
 };
 
 function oauthToolConfig() {
-  const configured = Boolean(process.env.OAUTH_ISSUER_URL || process.env.OAUTH_JWKS_URL || process.env.MCP_PUBLIC_URL);
-  const scope = process.env.OAUTH_REQUIRED_SCOPE || 'review:read';
+  const config = readAuthConfig(process.env, { allowHttpLoopback: process.env.NODE_ENV === 'test' });
+  const configured = Boolean(config);
+  const scope = config?.scope || 'review:read';
+  const runtime = config ? {
+    challenge(errorCode, description) {
+      const safeDescription = String(description).replace(/[^\\x20-\\x21\\x23-\\x5B\\x5D-\\x7E]/g, ' ').slice(0, 180);
+      const error = errorCode === 'insufficient_scope' ? 'insufficient_scope' : 'invalid_token';
+      return `Bearer resource_metadata="${config.metadataUrl}", scope="${scope}", error="${error}", error_description="${safeDescription}"`;
+    }
+  } : null;
   return {
     enabled: configured,
     scope,
+    runtime,
     securitySchemes: configured
       ? [{ type: 'oauth2', scopes: [scope] }]
       : [{ type: 'noauth' }]
