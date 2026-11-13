@@ -155,6 +155,7 @@ test('health and readiness endpoints return minimal operational status', async (
     const wrongMethod = await fetch(`${base}/healthz`, { method: 'POST' });
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get('allow'), 'GET');
+    await wrongMethod.text();
     const metrics = getMetrics();
     assert.equal(metrics.counters.http_requests_total, 3);
     assert.equal(metrics.http_requests_by_route.health, 3);
