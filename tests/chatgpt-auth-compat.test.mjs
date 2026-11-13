@@ -8,7 +8,7 @@ import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createHttpServer } from '../server/http.mjs';
 
 const issuer = 'https://identity.example.test/';
-const resource = 'http://127.0.0.1:3000/mcp';
+const resource = 'https://mcp.example.test/mcp';
 
 async function createTestIdentity() {
   const { publicKey, privateKey } = await generateKeyPair('RS256');
@@ -31,8 +31,18 @@ async function withOAuthServer(run) {
   const root = path.join(parent, 'project');
   await mkdir(root, { recursive: true });
   await writeFile(path.join(root, 'Sample.jsx'), 'export function Sample() { return <img src="/x.png" />; }');
-  const previousRoot = process.env.REACT_REVIEW_ROOT;
+  const previous = {
+    REACT_REVIEW_ROOT: process.env.REACT_REVIEW_ROOT,
+    OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
+    OAUTH_JWKS_URL: process.env.OAUTH_JWKS_URL,
+    MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
+    OAUTH_REQUIRED_SCOPE: process.env.OAUTH_REQUIRED_SCOPE
+  };
   process.env.REACT_REVIEW_ROOT = root;
+  process.env.OAUTH_ISSUER_URL = issuer;
+  process.env.OAUTH_JWKS_URL = 'https://identity.example.test/.well-known/jwks.json';
+  process.env.MCP_PUBLIC_URL = resource;
+  process.env.OAUTH_REQUIRED_SCOPE = 'review:read';
   const identity = await createTestIdentity();
   const runtime = createHttpServer({
     NODE_ENV: 'test',
@@ -52,8 +62,10 @@ async function withOAuthServer(run) {
     await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, ...identity });
   } finally {
     await runtime.close();
-    if (previousRoot === undefined) delete process.env.REACT_REVIEW_ROOT;
-    else process.env.REACT_REVIEW_ROOT = previousRoot;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     await rm(parent, { recursive: true, force: true });
   }
 }
