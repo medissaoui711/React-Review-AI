@@ -157,8 +157,8 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       const safeRequest = boundedRequest || request;
 
       // MCP discovery and initialization are intentionally unauthenticated.
-      // Only tools/call requests attempt bearer verification; handlers return
-      // the ChatGPT tool-level auth challenge when no valid AuthInfo is present.
+      // Browser-origin tools/call requests use HTTP OAuth challenges; non-browser
+      // hosts retain the MCP-level challenge used by ChatGPT integrations.
       if (oauth && await isToolCallRequest(safeRequest)) {
         const authorization = safeRequest.headers.get('authorization');
         // Browser MCP clients need an HTTP challenge so the official SDK can
