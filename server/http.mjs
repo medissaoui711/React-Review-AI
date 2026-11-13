@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
+import { createReviewService } from './review.mjs';
 import {
   createOAuthRuntime,
   createRequestRateLimiter,
@@ -78,13 +79,16 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     maxRequests: readPositiveLimit('MCP_RATE_LIMIT_PER_IP_PER_MINUTE', 300),
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
+  const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
+  const readiness = createReviewService(env.REACT_REVIEW_ROOT).then(() => true, () => false);
   const mcp = createMcpHandler(createServer, { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
       const url = new URL(request.url);
       const isMetadataRequest = oauth && url.pathname === '/.well-known/oauth-protected-resource';
-      if (url.pathname !== MCP_PATH && !isMetadataRequest) {
+      const isHealthRequest = url.pathname === '/healthz' || url.pathname === '/readyz';
+      if (url.pathname !== MCP_PATH && !isMetadataRequest && !isHealthRequest) {
         return new Response('Not Found', { status: 404 });
       }
 
@@ -93,6 +97,20 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
       const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
+
+      if (isHealthRequest) {
+        if (request.method.toUpperCase() !== 'GET') {
+          return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
+        }
+        if (url.pathname === '/healthz') {
+          return Response.json({ status: 'ok' }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        const ready = await readiness;
+        return Response.json({ status: ready ? 'ready' : 'not_ready' }, {
+          status: ready ? 200 : 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
 
       if (isMetadataRequest) {
         if (request.method.toUpperCase() !== 'GET') {
@@ -161,12 +179,23 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   return {
     server,
     async close() {
-      if (server.listening) {
-        await new Promise((resolve, reject) => {
-          server.close((error) => error ? reject(error) : resolve());
-        });
+      if (!server.listening) {
+        await mcp.close();
+        return;
       }
-      await mcp.close();
+      let shutdownTimer;
+      const closePromise = new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+      server.closeIdleConnections?.();
+      shutdownTimer = setTimeout(() => server.closeAllConnections?.(), shutdownTimeoutMs);
+      shutdownTimer.unref?.();
+      try {
+        await closePromise;
+      } finally {
+        clearTimeout(shutdownTimer);
+        await mcp.close();
+      }
     }
   };
 }
@@ -186,7 +215,10 @@ if (isDirectExecution) {
     console.error(`React Review AI Streamable HTTP listening at http://${host}:${port}${MCP_PATH}`);
   });
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     try {
       await runtime.close();
       process.exitCode = 0;
