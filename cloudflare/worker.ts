@@ -10,20 +10,29 @@ interface Env {
   MCP_RATE_LIMIT_PER_IP_PER_MINUTE?: string;
 }
 
-
 export class JwksEgress extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     const configuredUrl = this.env.OAUTH_JWKS_URL;
     if (!configuredUrl) return new Response("JWKS egress is not configured.", { status: 503 });
 
-    const expected = new URL(configuredUrl);
-    const actual = new URL(request.url);
+    let expected: URL;
+    let actual: URL;
+    try {
+      expected = new URL(configuredUrl);
+      actual = new URL(request.url);
+    } catch {
+      return new Response("Outbound destination is not allowed.", { status: 403 });
+    }
+
+    // Match the complete canonical URL. This includes port, path, query,
+    // credentials and fragment, not merely the destination hostname.
     if (
       expected.protocol !== "https:" ||
-      actual.protocol !== "https:" ||
-      actual.hostname !== expected.hostname ||
-      actual.pathname !== expected.pathname ||
-      request.method !== "GET"
+      expected.username !== "" ||
+      expected.password !== "" ||
+      expected.hash !== "" ||
+      request.method !== "GET" ||
+      actual.href !== expected.href
     ) {
       return new Response("Outbound destination is not allowed.", { status: 403 });
     }
@@ -37,17 +46,23 @@ const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 const STARTUP_ATTEMPTS = 60;
 const STARTUP_RETRY_MS = 200;
 
-const ROUTES = new Map<string, string>([
-  ["/mcp", "POST"],
-  ["/.well-known/oauth-protected-resource", "GET"],
-  ["/healthz", "GET"],
-  ["/readyz", "GET"],
-]);
-
 function unavailable(message: string, status = 503): Response {
   return new Response(message, {
     status,
     headers: { "Cache-Control": "no-store", "Retry-After": "5" },
+  });
+}
+
+function publicMetadata(request: Request, env: Env): Response {
+  const resource = new URL("/mcp", request.url).href;
+  const metadata = {
+    resource,
+    authorization_servers: [env.OAUTH_ISSUER_URL],
+    scopes_supported: [env.OAUTH_REQUIRED_SCOPE || "review:read"],
+    bearer_methods_supported: ["header"],
+  };
+  return Response.json(metadata, {
+    headers: { "Cache-Control": "public, max-age=300" },
   });
 }
 
@@ -122,13 +137,9 @@ export class ReactReviewContainer extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const method = ROUTES.get(url.pathname);
-    if (!method) return new Response("Not Found", { status: 404 });
-    if (request.method.toUpperCase() !== method) {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: { Allow: method },
-      });
+    if (url.pathname !== "/mcp") return new Response("Not Found", { status: 404 });
+    if (request.method.toUpperCase() !== "POST") {
+      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
     }
 
     this.starting ??= this.startAndWaitForPort(url.origin).finally(() => {
@@ -153,13 +164,28 @@ export class ReactReviewContainer extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const method = ROUTES.get(url.pathname);
-    if (!method) return new Response("Not Found", { status: 404 });
-    if (request.method.toUpperCase() !== method) {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: { Allow: method },
-      });
+
+    // Liveness and OAuth discovery stay at the edge; neither can wake a Container.
+    if (url.pathname === "/healthz") {
+      if (request.method.toUpperCase() !== "GET") {
+        return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET" } });
+      }
+      return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (url.pathname === "/.well-known/oauth-protected-resource") {
+      if (request.method.toUpperCase() !== "GET") {
+        return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET" } });
+      }
+      if (!env.OAUTH_ISSUER_URL || !env.OAUTH_JWKS_URL) {
+        return unavailable("Public demo authentication is not configured.");
+      }
+      return publicMetadata(request, env);
+    }
+
+    if (url.pathname !== "/mcp") return new Response("Not Found", { status: 404 });
+    if (request.method.toUpperCase() !== "POST") {
+      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
     }
 
     if (!env.OAUTH_ISSUER_URL || !env.OAUTH_JWKS_URL) {

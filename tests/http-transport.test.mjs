@@ -7,13 +7,13 @@ import { request as httpRequest } from 'node:http';
 
 import { createHttpServer } from '../server/http.mjs';
 
-async function withHttpServer(run) {
+async function withHttpServer(run, envOverrides = {}) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-http-'));
   const root = path.join(parent, 'project');
   await mkdir(root, { recursive: true });
   const previousRoot = process.env.REACT_REVIEW_ROOT;
   process.env.REACT_REVIEW_ROOT = root;
-  const runtime = createHttpServer();
+  const runtime = createHttpServer({ ...process.env, ...envOverrides, REACT_REVIEW_ROOT: root });
 
   try {
     await new Promise((resolve, reject) => {
@@ -281,4 +281,30 @@ test('Streamable HTTP accepts non-browser clients without an Origin header', asy
     });
     assert.notEqual(response.status, 403);
   });
+});
+
+test('Streamable HTTP accepts only explicitly configured browser origins', async () => {
+  await withHttpServer(async ({ endpoint }) => {
+    const trusted = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        origin: 'https://chat.example'
+      },
+      body: '{}'
+    });
+    assert.notEqual(trusted.status, 403);
+
+    const untrusted = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        origin: 'https://other.example'
+      },
+      body: '{}'
+    });
+    assert.equal(untrusted.status, 403);
+  }, { MCP_ALLOWED_ORIGIN_HOSTS: 'chat.example' });
 });

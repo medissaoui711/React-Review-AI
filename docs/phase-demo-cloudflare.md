@@ -64,3 +64,15 @@ The feature-branch validation run completed successfully for the implementation 
 - The workflow then regenerated and committed the npm lockfile to this feature branch.
 
 A subsequent pull-request security run must validate the synchronized lockfile with a fresh `npm ci`; the earlier run against the pre-sync lockfile correctly failed and is not counted as a passing security result.
+
+
+## Phase D4 readiness hardening
+
+- Public `GET /healthz` and `GET /.well-known/oauth-protected-resource` are answered by the Worker edge; neither endpoint wakes the Durable Object or Container.
+- Public `POST /mcp` is the only route forwarded to the Durable Object. The Container readiness probe `/readyz` is internal to the Durable Object and is not exposed by the Worker.
+- JWKS egress accepts only GET requests whose complete canonical HTTPS URL exactly matches `OAUTH_JWKS_URL`; credentials and fragments are rejected, and redirects remain manual.
+- Browser Origin allowlisting remains explicit through `MCP_ALLOWED_ORIGIN_HOSTS`. Requests without Origin remain supported for non-browser MCP clients. Do not guess the ChatGPT Origin; verify it against the actual deployed client before adding an allowlist entry.
+- The MCP CI workflow now runs on pushes to `main` as well as the Cloudflare demo branch. Its Cloudflare step builds only and does not deploy.
+- In-memory request rate limits are process-local and reset on container restart; they are not a durable, globally coordinated abuse-control system.
+- Live OAuth/ChatGPT certification remains pending until a public HTTPS deployment and a real provider-neutral OAuth/OIDC issuer/JWKS configuration are available.
+- Cloudflare Containers availability and billing-plan eligibility must be confirmed by the account owner before any deployment approval. No account state was changed in this phase.
