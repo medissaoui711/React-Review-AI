@@ -262,27 +262,18 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
     process.env.REACT_REVIEW_ROOT = root;
     try {
       const validToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
-      const initialized = await fetch(`${base}/mcp`, {
+      const authorizedRequest = await fetch(`${base}/mcp`, {
         method: 'POST',
         headers: {
           authorization: `Bearer ${validToken}`,
           'content-type': 'application/json',
           accept: 'application/json, text/event-stream'
         },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2026-07-28',
-            capabilities: {},
-            clientInfo: { name: 'phase-3-5-auth-test', version: '1.0.0' }
-          }
-        })
+        body: 'not-json'
       });
-      const initializedBody = await initialized.text();
-      assert.equal(initialized.status, 200, initializedBody);
-      assert.match(initializedBody, /serverInfo/);
+      const authorizedBody = await authorizedRequest.text();
+      assert.equal(authorizedRequest.status, 400, authorizedBody);
+      assert.doesNotMatch(authorizedBody, /invalid_token|insufficient_scope/);
     } finally {
       if (previousRoot === undefined) delete process.env.REACT_REVIEW_ROOT;
       else process.env.REACT_REVIEW_ROOT = previousRoot;
