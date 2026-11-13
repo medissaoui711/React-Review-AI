@@ -159,11 +159,11 @@ These values are build-time frontend configuration. They are not automatically i
 Before enabling browser connectivity, the owner must configure the Auth0 application as a Single Page Application with:
 
 1. Authorization Code grant and PKCE (S256); no client secret in the browser.
-2. Allowed Callback URL equal to the exact Pages origin and current dashboard path used by the build (normally `https://<pages-host>/`).
-3. Allowed Web Origin equal to the Pages origin.
+2. Allowed Callback URL equal to the production dashboard URL `https://react-review-ai.pages.dev/` (or the exact preview URL when validating a preview build).
+3. Allowed Web Origin equal to `https://react-review-ai.pages.dev` (and the exact preview origin only when preview testing is intended).
 4. API audience equal to the exact MCP resource URL, including `/mcp`.
 5. The `review:read` API permission and RS256/ES256 access-token signing compatible with the resource server.
-6. Auth0 CORS/allowed origins for the Pages origin, as required by the tenant configuration.
+6. Auth0 CORS/allowed origins for `https://react-review-ai.pages.dev`, as required by the tenant configuration.
 
 The SDK performs protected-resource and authorization-server metadata discovery, validates issuer binding, handles the PKCE code exchange, and reconnects using a fresh Streamable HTTP transport. Callback `state` is checked before code exchange. Callback error descriptions are never rendered.
 
