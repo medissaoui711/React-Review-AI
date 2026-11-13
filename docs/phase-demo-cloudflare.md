@@ -6,6 +6,10 @@ This deployment is developed on `phase-demo-cloudflare`. It is a demo environmen
 
 The public Worker is intended to run on the default `workers.dev` hostname. No custom domain is required.
 
+## Container sizing
+
+The demo uses Cloudflare's predefined `basic` instance: 1/4 vCPU, 1 GiB memory, and 4 GB disk. This matches the approved Phase D2 sizing and provides more headroom for AST parsing than the `lite` instance (256 MiB).
+
 ## Architecture
 
 - Cloudflare Worker: validates the route/method, overwrites the internal rate-limit key using Cloudflare's `CF-Connecting-IP`, and forwards to the named Durable Object.
