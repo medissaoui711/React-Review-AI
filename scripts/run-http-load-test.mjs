@@ -50,7 +50,7 @@ async function worker() {
     try {
       const response = await fetch(options.url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2026-07-28' },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: `load-${index + 1}`,
