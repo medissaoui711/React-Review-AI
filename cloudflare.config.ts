@@ -3,9 +3,13 @@ import * as entrypoint from "./cloudflare/worker.ts" with { type: "cf-worker" };
 
 const reactReviewContainer = defineContainer({
   name: "react-review-ai-demo",
-  image: { dockerfile: "./Dockerfile" },
-  instanceType: "basic",
-  maxInstances: 1,
+  schedulingPolicy: "durable_object",
+  images: {
+    base: {
+      dockerfile: "./Dockerfile",
+      buildContext: ".",
+    },
+  },
 });
 
 export default defineConfig({
