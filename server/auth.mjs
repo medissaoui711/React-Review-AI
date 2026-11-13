@@ -64,27 +64,41 @@ export function createJwtTokenVerifier({ issuer, resource, jwks }) {
   const expectedResource = resource instanceof URL ? resource : new URL(resource);
   return {
     async verifyAccessToken(token) {
+      let payload;
       try {
-        const { payload } = await jwtVerify(token, jwks, {
+        ({ payload } = await jwtVerify(token, jwks, {
           issuer,
           audience: expectedResource.href,
           algorithms: ['RS256', 'ES256'],
           requiredClaims: ['iss', 'sub', 'aud', 'exp']
-        });
-        if (typeof payload.sub !== 'string' || !payload.sub || typeof payload.exp !== 'number') {
-          throw new Error('Required subject or expiry claim is missing.');
-        }
-        return {
-          token,
-          clientId: typeof payload.client_id === 'string' ? payload.client_id : payload.sub,
-          scopes: readScopes(payload),
-          expiresAt: payload.exp,
-          resource: expectedResource
-        };
-      } catch {
+        }));
+      } catch (error) {
+        const invalidTokenCodes = new Set([
+          'ERR_JWT_EXPIRED',
+          'ERR_JWT_CLAIM_VALIDATION_FAILED',
+          'ERR_JWT_INVALID',
+          'ERR_JWS_INVALID',
+          'ERR_JWS_SIGNATURE_VERIFICATION_FAILED',
+          'ERR_JOSE_ALG_NOT_ALLOWED',
+          'ERR_JOSE_NOT_SUPPORTED',
+          'ERR_JWKS_NO_MATCHING_KEY',
+          'ERR_JWKS_MULTIPLE_MATCHING_KEYS'
+        ]);
+        if (!invalidTokenCodes.has(error?.code)) throw error;
         // Never log token material or token-verification failure details.
         throw new OAuthError(OAuthErrorCode.InvalidToken, 'The access token is invalid or expired.');
       }
+
+      if (typeof payload.sub !== 'string' || !payload.sub || typeof payload.exp !== 'number') {
+        throw new OAuthError(OAuthErrorCode.InvalidToken, 'The access token is missing required claims.');
+      }
+      return {
+        token,
+        clientId: typeof payload.client_id === 'string' ? payload.client_id : payload.sub,
+        scopes: readScopes(payload),
+        expiresAt: payload.exp,
+        resource: expectedResource
+      };
     }
   };
 }
