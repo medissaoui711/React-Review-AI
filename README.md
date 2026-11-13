@@ -62,3 +62,11 @@ The server performs static, read-only analysis. It does not modify project files
 ## Validation
 
 GitHub Actions syntax-checks the server modules, runs security/regression and HTTP transport tests, negotiates MCP over STDIO and Streamable HTTP, verifies that no tool exposes a project-root override, and calls each registered tool over both transports.
+
+## AST analysis and result contracts
+
+The review engine parses JavaScript, JSX, TypeScript, and TSX into an AST before applying syntax-aware rules. Parse failures are reported separately and are not silently converted into findings. Finding IDs are deterministic for the same rule, file, source location, and evidence. Each finding includes a rule ID, severity, category, confidence, file location, evidence, explanation, recommendation, and verification guidance.
+
+The project scan enforces these default resource budgets: 2,500 discovered files, 500 KB per source file, 20 MB total source bytes, 10 seconds per scan, and 5,000 findings. Results report truncation, timeout, skipped files, and parse errors. These are safety ceilings, not performance guarantees.
+
+Each MCP tool publishes a dedicated structured output contract. The text response remains available for clients that do not consume structured content. Static rules are signals for human review; they do not prove runtime exploitability or accessibility conformance.
