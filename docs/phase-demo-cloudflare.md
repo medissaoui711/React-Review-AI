@@ -173,7 +173,7 @@ The SDK performs protected-resource and authorization-server metadata discovery,
 - The PKCE verifier, OAuth state, and non-secret discovery metadata are stored in `sessionStorage` only to survive the authorization redirect, then cleared after callback processing.
 - The Worker allows only explicit HTTPS Origins listed by hostname in `MCP_ALLOWED_ORIGIN_HOSTS`; wildcard Origins are not supported.
 - CORS preflight permits the MCP SDK request headers, including `Mcp-Method` and `Mcp-Name`, and exposes the authentication and protocol response headers needed by the browser client.
-- For browser `tools/call` requests without a bearer token, the HTTP server returns a `401` OAuth challenge so the official MCP SDK can begin the browser flow. Non-browser hosts without an Origin retain the existing MCP-level authentication challenge behavior.
+- For browser `tools/call` requests, missing/invalid bearer tokens return HTTP `401` and insufficient scope returns HTTP `403`, preserving `WWW-Authenticate` so the official MCP SDK can start or renew authorization. Non-browser hosts without an Origin retain the existing MCP-level authentication challenge behavior.
 
 ### Phase 3.8 validation boundary
 
