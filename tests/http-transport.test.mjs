@@ -42,10 +42,69 @@ test('HTTP server applies explicit keep-alive and accepts a shutdown timeout', a
   }
 });
 
-test('HTTP server rejects invalid graceful-shutdown timeout configuration', () => {
+test('HTTP server bounds concurrent requests while keeping health probes available', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-concurrency-'));
+  const root = path.join(parent, 'project');
+  await mkdir(root, { recursive: true });
+  const runtime = createHttpServer({
+    REACT_REVIEW_ROOT: root,
+    MCP_MAX_CONCURRENT_REQUESTS: '1'
+  });
+  const abort = new AbortController();
+  let streamController;
+  const hangingBody = new ReadableStream({
+    start(controller) {
+      streamController = controller;
+      controller.enqueue(new TextEncoder().encode('{}'));
+    }
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const base = `http://127.0.0.1:${address.port}`;
+    const firstRequest = fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: hangingBody,
+      duplex: 'half',
+      signal: abort.signal
+    }).catch(() => null);
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const overloaded = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(overloaded.status, 503);
+    assert.equal(overloaded.headers.get('retry-after'), '1');
+
+    const health = await fetch(`${base}/healthz`);
+    assert.equal(health.status, 200);
+    assert.ok(runtime.getMetrics().counters.http_overloaded_total >= 1);
+
+    abort.abort();
+    streamController.error(new Error('test request aborted'));
+    await firstRequest;
+  } finally {
+    abort.abort();
+    await runtime.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test('HTTP server rejects invalid graceful-shutdown and concurrency limits', () => {
   assert.throws(
     () => createHttpServer({ MCP_SHUTDOWN_TIMEOUT_MS: '0' }),
     /MCP_SHUTDOWN_TIMEOUT_MS must be a positive integer/
+  );
+  assert.throws(
+    () => createHttpServer({ MCP_MAX_CONCURRENT_REQUESTS: '0' }),
+    /MCP_MAX_CONCURRENT_REQUESTS must be a positive integer/
   );
 });
 
