@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -156,4 +157,74 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /mcpClient\.callTool/);
   assert.match(main, /saveTokens\(tokens\)\s*\{\s*this\.accessTokens = tokens;/);
   assert.doesNotMatch(main, /client_secret|localStorage/i);
+});
+
+
+test('browser OAuth provider preserves only short-lived PKCE state across redirects', async () => {
+  const main = await read('src/main.js');
+  const start = main.indexOf('const OAUTH_TRANSACTION_TTL_MS');
+  const end = main.indexOf('let mcpClient;', start);
+  assert.ok(start >= 0 && end > start, 'OAuth provider block must remain isolated before MCP UI wiring');
+
+  const sessionValues = new Map();
+  const sessionStorage = {
+    getItem(key) { return sessionValues.has(key) ? sessionValues.get(key) : null; },
+    setItem(key, value) { sessionValues.set(key, String(value)); },
+    removeItem(key) { sessionValues.delete(key); },
+  };
+  let now = 1_000;
+  const FakeDate = class extends Date {
+    static now() { return now; }
+  };
+  const context = {
+    window: {
+      sessionStorage,
+      location: { pathname: '/', origin: 'https://dashboard.example.test' },
+    },
+    crypto: { randomUUID: () => 'oauth-state-test' },
+    Date: FakeDate,
+    URL,
+  };
+
+  runInNewContext(
+    main.slice(start, end) + '\\nglobalThis.__BrowserOAuthProvider = BrowserOAuthProvider;',
+    context,
+  );
+
+  const Provider = context.__BrowserOAuthProvider;
+  const provider = new Provider('public-client-id');
+  const verifier = 'pkce-verifier-test';
+  provider.saveCodeVerifier(verifier);
+  provider.saveDiscoveryState({
+    authorizationServerUrl: 'https://identity.example.test/',
+    resource: 'https://mcp.example.test/mcp',
+  });
+  const state = provider.state();
+
+  assert.equal(provider.pendingState, state);
+  assert.equal(provider.codeVerifier(), verifier);
+  assert.equal(provider.clientInformation({ issuer: 'https://identity.example.test/' }).token_endpoint_auth_method, 'none');
+  assert.equal('client_secret' in provider.clientInformation({ issuer: 'https://identity.example.test/' }), false);
+
+  const restored = new Provider('public-client-id');
+  assert.equal(restored.pendingState, state);
+  assert.equal(restored.codeVerifier(), verifier);
+  assert.equal(
+    JSON.stringify(restored.discoveryState()),
+    JSON.stringify({
+      authorizationServerUrl: 'https://identity.example.test/',
+      resource: 'https://mcp.example.test/mcp',
+    }),
+  );
+
+  provider.saveTokens({ access_token: 'memory-only-access-token' });
+  assert.equal(provider.tokens().access_token, 'memory-only-access-token');
+  assert.ok([...sessionValues.values()].every((value) => !String(value).includes('memory-only-access-token')));
+  assert.ok([...sessionValues.keys()].every((key) => !/token/i.test(key)));
+
+  now += 10 * 60 * 1000 + 1;
+  const expired = new Provider('public-client-id');
+  assert.equal(expired.pendingState, null);
+  assert.equal(sessionValues.size, 0);
+  assert.throws(() => expired.codeVerifier(), /expired/);
 });
