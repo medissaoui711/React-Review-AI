@@ -1,4 +1,5 @@
 import { createServer as createNodeServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {
   createMcpHandler,
@@ -178,7 +179,38 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const server = createNodeServer(
     { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 1_000 },
     (request, response) => {
+      const requestId = randomUUID();
+      const startedAt = Date.now();
       const requestPath = new URL(request.url, 'http://localhost').pathname;
+      const route = requestPath === MCP_PATH
+        ? 'mcp'
+        : requestPath === '/healthz'
+          ? 'health'
+          : requestPath === '/readyz'
+            ? 'readiness'
+            : requestPath === '/.well-known/oauth-protected-resource'
+              ? 'oauth_metadata'
+              : 'other';
+      response.setHeader('X-Request-Id', requestId);
+      let logged = false;
+      const writeRequestLog = event => {
+        if (logged) return;
+        logged = true;
+        console.error(JSON.stringify({
+          level: 'info',
+          event,
+          request_id: requestId,
+          method: request.method,
+          route,
+          status: response.statusCode,
+          duration_ms: Math.max(0, Date.now() - startedAt)
+        }));
+      };
+      response.once('finish', () => writeRequestLog('http_request'));
+      response.once('close', () => {
+        if (!response.writableFinished) writeRequestLog('http_request_aborted');
+      });
+
       const isHealthProbe = request.method === 'GET' && (requestPath === '/healthz' || requestPath === '/readyz');
       const rateRequest = new Request('http://rate-limit.internal/', {
         headers: { 'x-mcp-rate-limit-key': request.socket.remoteAddress || 'unknown' }
