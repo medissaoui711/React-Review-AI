@@ -24,7 +24,7 @@ $env:REACT_REVIEW_ROOT = "C:\absolute\path\to\react-project"
 npm start
 ```
 
-The server resolves and validates this directory once per server instance. If the variable is missing, relative, inaccessible, or not a directory, startup fails closed. All four tools share this fixed root; callers cannot supply or override it.
+STDIO validates this directory during server startup and fails closed if it is missing, relative, inaccessible, or not a directory. The HTTP process can start so its liveness endpoint remains observable, but it reports not-ready until the configured directory is valid. All four tools share this fixed root; callers cannot supply or override it.
 
 ## MCP transports
 
@@ -43,6 +43,14 @@ REACT_REVIEW_ROOT=/absolute/path/to/react-project npm run start:http
 The HTTP transport listens on `127.0.0.1` by default and exposes `http://127.0.0.1:3000/mcp`. Set `PORT` to change the port. It uses the official MCP `createMcpHandler` entry with stateless request handling; each request receives a fresh MCP server instance and no protocol session is retained.
 
 The endpoint validates `Host` and any supplied `Origin`, accepts POST requests only, and rejects standalone GET and DELETE session operations. Local-only mode remains available for trusted local integrations. When OAuth is configured, `initialize` and `tools/list` remain available without a token so clients can discover the tool catalog; each `tools/call` is independently verified against the configured issuer, audience, expiry, and review scope. Tool descriptors advertise OAuth security schemes, and unauthenticated or insufficient-scope tool results carry the `mcp/www_authenticate` metadata challenge used by ChatGPT to start or step up OAuth linking. STDIO remains local and keeps its existing trusted-environment behavior. Remote binding is denied unless explicitly enabled and configured behind a TLS-terminating reverse proxy.
+
+### Health, readiness, and graceful shutdown
+
+- `GET /healthz` returns a minimal liveness response (`200`) without exposing configuration or project details.
+- `GET /readyz` revalidates the configured project root and returns `200` only while it is accessible; otherwise it returns `503`. Both endpoints enforce the same Host/Origin checks and use `Cache-Control: no-store`.
+- Health endpoints accept GET only. They do not expose metrics, environment variables, file paths, or OAuth state.
+- On SIGINT/SIGTERM, the HTTP server stops accepting new connections, closes idle connections, waits for active requests, and force-closes remaining HTTP connections after `MCP_SHUTDOWN_TIMEOUT_MS` (default `10000` ms). The timeout must be a positive integer.
+- Liveness is not readiness: route traffic only when `/readyz` reports `ready`.
 
 
 ## HTTP OAuth resource-server configuration
@@ -96,6 +104,7 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 - Request bodies are limited to 1 MiB by default.
 - Requests are rate-limited to 300 per socket peer per minute and 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_IP_PER_MINUTE` and `MCP_RATE_LIMIT_PER_MINUTE` respectively to change these positive integers. Behind a reverse proxy, the socket peer is the proxy, so enforce complementary per-client limits at the proxy.
 - HTTP headers, header wait time and request timeout have explicit limits.
+- `MCP_SHUTDOWN_TIMEOUT_MS` controls the bounded graceful-shutdown window (default 10 seconds).
 - STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
 
