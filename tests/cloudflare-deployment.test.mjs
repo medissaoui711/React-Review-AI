@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -111,4 +112,126 @@ test('D5 CI trigger is branch-scoped and remains non-deploying', async () => {
   assert.match(workflow, /phase-demo-cloudflare-d5-deployment-readiness/);
   assert.match(workflow, /cloudflare:build/);
   assert.doesNotMatch(workflow, /cf deploy/);
+});
+
+
+test('Cloudflare Worker enforces explicit-origin CORS for browser MCP and OAuth metadata requests', async () => {
+  const worker = await read('cloudflare/worker.ts');
+  assert.match(worker, /function resolveAllowedOrigin/);
+  assert.match(worker, /parsed\.protocol !== "https:"/);
+  assert.match(worker, /allowedHosts\.includes\(parsed\.hostname\.toLowerCase\(\)\)/);
+  assert.match(worker, /Access-Control-Allow-Origin/);
+  assert.match(worker, /Access-Control-Expose-Headers.*WWW-Authenticate.*Mcp-Session-Id/);
+  assert.match(worker, /function corsPreflight/);
+  assert.match(worker, /expectedMethods\.includes\(requestedMethod/);
+  assert.match(worker, /expectedMethods\.join\(", "\)/);
+  assert.match(worker, /isMcpRoute \? \["GET", "POST"\] : \["GET"\]/);
+  assert.match(worker, /isMcpRoute \? \["GET", "POST"\] : \["GET"\]/);
+  assert.match(worker, /requestedHeaders\.some\(\(header\) => !CORS_ALLOWED_HEADERS\.has\(header\)\)/);
+  assert.match(worker, /"mcp-method"/);
+  assert.match(worker, /"mcp-name"/);
+  assert.match(worker, /isResourceMetadata/);
+  assert.match(worker, /return respond\(await stub\.fetch\(forwarded\)\)/);
+  assert.doesNotMatch(worker, /Access-Control-Allow-Origin["']?,\s*["']\*["']/);
+});
+
+test('static dashboard exposes safe MCP configuration readiness without claiming live connectivity', async () => {
+  const main = await read('src/main.js');
+  assert.match(main, /VITE_MCP_ENDPOINT/);
+  assert.match(main, /endpoint\.protocol !== "https:"/);
+  assert.match(main, /endpoint\.username/);
+  assert.match(main, /endpoint\.password/);
+  assert.match(main, /endpoint\.search/);
+  assert.match(main, /endpoint\.hash/);
+  assert.match(main, /!== "\/mcp"/);
+  assert.doesNotMatch(main, /pathname\.replace/);
+  assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/i);
+  assert.match(main, /Access and refresh tokens stay in memory/);
+  assert.match(main, /BrowserOAuthProvider/);
+  assert.match(main, /VITE_OAUTH_CLIENT_ID/);
+  assert.match(main, /VITE_OAUTH_ISSUER/);
+  assert.match(main, /context\.issuer !== this\.issuer/);
+  assert.match(main, /StreamableHTTPClientTransport/);
+  assert.match(main, /finishAuth\(params\)/);
+  assert.match(main, /sessionStorage/);
+  assert.match(main, /pkce-verifier/);
+  assert.match(main, /OAUTH_TRANSACTION_TTL_MS/);
+  assert.match(main, /created-at/);
+  assert.doesNotMatch(main, /localStorage/);
+  assert.doesNotMatch(main, /sessionStorage\.setItem\([^,]*(?:token|access)/i);
+  assert.match(main, /mcpClient\.callTool/);
+  assert.match(main, /saveTokens\(tokens\)\s*\{\s*this\.accessTokens = tokens;/);
+  assert.doesNotMatch(main, /client_secret|localStorage/i);
+});
+
+
+test('browser OAuth provider preserves only short-lived PKCE state across redirects', async () => {
+  const main = await read('src/main.js');
+  const start = main.indexOf('const OAUTH_TRANSACTION_TTL_MS');
+  const end = main.indexOf('let mcpClient;', start);
+  assert.ok(start >= 0 && end > start, 'OAuth provider block must remain isolated before MCP UI wiring');
+
+  const sessionValues = new Map();
+  const sessionStorage = {
+    getItem(key) { return sessionValues.has(key) ? sessionValues.get(key) : null; },
+    setItem(key, value) { sessionValues.set(key, String(value)); },
+    removeItem(key) { sessionValues.delete(key); },
+  };
+  let now = 1_000;
+  const FakeDate = class extends Date {
+    static now() { return now; }
+  };
+  const context = {
+    window: {
+      sessionStorage,
+      location: { pathname: '/', origin: 'https://dashboard.example.test' },
+    },
+    crypto: { randomUUID: () => 'oauth-state-test' },
+    Date: FakeDate,
+    URL,
+  };
+
+  runInNewContext(
+    main.slice(start, end) + '\nglobalThis.__BrowserOAuthProvider = BrowserOAuthProvider;',
+    context,
+  );
+
+  const Provider = context.__BrowserOAuthProvider;
+  const issuer = 'https://identity.example.test/';
+  const provider = new Provider('public-client-id', issuer);
+  const verifier = 'pkce-verifier-test';
+  provider.saveCodeVerifier(verifier);
+  provider.saveDiscoveryState({
+    authorizationServerUrl: 'https://identity.example.test/',
+    resource: 'https://mcp.example.test/mcp',
+  });
+  const state = provider.state();
+
+  assert.equal(provider.pendingState, state);
+  assert.equal(provider.codeVerifier(), verifier);
+  assert.equal(provider.clientInformation({ issuer }).token_endpoint_auth_method, 'none');
+  assert.equal('client_secret' in provider.clientInformation({ issuer }), false);
+  assert.throws(() => provider.clientInformation({ issuer: 'https://attacker.example.test/' }), /does not match/);
+
+  const restored = new Provider('public-client-id', issuer);
+  assert.equal(restored.pendingState, state);
+  assert.equal(restored.codeVerifier(), verifier);
+  assert.equal(
+    JSON.stringify(restored.discoveryState()),
+    JSON.stringify({
+      authorizationServerUrl: 'https://identity.example.test/',
+      resource: 'https://mcp.example.test/mcp',
+    }),
+  );
+
+  provider.saveTokens({ access_token: 'memory-only-access-token' });
+  assert.equal(provider.tokens().access_token, 'memory-only-access-token');
+  assert.ok([...sessionValues.values()].every((value) => !String(value).includes('memory-only-access-token')));
+  assert.ok([...sessionValues.keys()].every((key) => !/token/i.test(key)));
+
+  now += 10 * 60 * 1000 + 1;
+  const expired = new Provider('public-client-id', issuer);
+  assert.equal(expired.pendingState, null);
+  assert.equal(sessionValues.size, 0);
+  assert.throws(() => expired.codeVerifier(), /expired/);
 });

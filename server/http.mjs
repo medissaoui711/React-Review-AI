@@ -157,10 +157,22 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       const safeRequest = boundedRequest || request;
 
       // MCP discovery and initialization are intentionally unauthenticated.
-      // Only tools/call requests attempt bearer verification; handlers return
-      // the ChatGPT tool-level auth challenge when no valid AuthInfo is present.
+      // Browser-origin tools/call requests use HTTP OAuth challenges; non-browser
+      // hosts retain the MCP-level challenge used by ChatGPT integrations.
       if (oauth && await isToolCallRequest(safeRequest)) {
         const authorization = safeRequest.headers.get('authorization');
+        // Browser MCP clients need an HTTP challenge so the official SDK can
+        // run OAuth discovery and Authorization Code + PKCE. Non-browser
+        // hosts retain the MCP-level challenge used by ChatGPT integrations.
+        if (!authorization && safeRequest.headers.has('origin')) {
+          return new Response('Unauthorized', {
+            status: 401,
+            headers: {
+              'Cache-Control': 'no-store',
+              'WWW-Authenticate': oauth.challenge('invalid_token', 'A bearer access token is required.')
+            }
+          });
+        }
         if (authorization) {
           let authResult;
           try {
@@ -172,6 +184,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
             });
           }
           if (authResult instanceof Response) {
+            // Browser SDKs need the HTTP status and WWW-Authenticate challenge
+            // to refresh or restart OAuth. Non-browser hosts retain the
+            // MCP-level challenge contract used by ChatGPT integrations.
+            if (safeRequest.headers.has('origin')) return authResult;
             const insufficientScope = authResult.status === 403;
             return mcp.fetch(safeRequest, {
               authInfo: {

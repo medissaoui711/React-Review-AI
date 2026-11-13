@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - phase-3.7-production-hardening
+      - phase-3.8-frontend-integration-readiness
   pull_request:
     branches:
       - main

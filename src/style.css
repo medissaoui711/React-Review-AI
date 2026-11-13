@@ -53,3 +53,39 @@ footer{border-top:1px solid #202a40;padding:20px 0 25px;display:flex;justify-con
 @media(max-width:1100px){.main-content{padding:0 34px}.tool-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.orb-one{right:0}.orb-two{right:60px}}
 @media(max-width:700px){.sidebar{position:relative;width:auto;height:auto;padding:16px 18px;border-right:0;border-bottom:1px solid #202a40}.brand{padding:0 3px 17px}.nav-label,.sidebar-bottom{display:none}.navigation{display:flex;gap:5px}.nav-link{height:36px;padding:0 9px;font-size:11px}.nav-icon{font-size:15px}.main-content{margin-left:0;padding:0 20px}.topbar{height:58px}.readonly-pill{font-size:8px;padding:7px}.welcome{padding:48px 0 45px}h1{font-size:42px}.intro{font-size:13px}.orb-one{width:190px;height:190px;top:45px;right:-100px}.orb-two{width:120px;height:120px;top:80px;right:-65px}.section{padding:34px 0}.section-heading h2{font-size:21px}.tool-grid{gap:10px}.tool-card{padding:15px;min-height:220px}.tool-card h3{font-size:14px;margin-top:21px}.tool-card p{font-size:10px}.workflow{align-items:flex-start;flex-wrap:wrap;padding:18px;gap:12px}.workflow>div:nth-child(2){flex:1;min-width:190px}.workflow-badge{margin-left:54px}footer{gap:10px;flex-wrap:wrap;font-size:9px}}
 @media(max-width:390px){.tool-grid{grid-template-columns:1fr}.tool-card{min-height:175px}.nav-link{gap:6px}.readonly-pill{display:none}}
+
+
+/* Phase 3.8: connection readiness and keyboard-visible navigation states. */
+.nav-link:focus-visible,.primary-link:focus-visible{outline:2px solid #b8adff;outline-offset:3px}
+.integration-section{padding-top:10px}
+.connection-card{display:flex;align-items:center;gap:15px;padding:20px;border:1px solid #2b3650;border-radius:12px;background:#121b30}
+.connection-indicator{width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#e6b65b;box-shadow:0 0 0 5px #e6b65b20}
+.connection-card[data-connection-state="configured"] .connection-indicator{background:#67d6b0;box-shadow:0 0 0 5px #67d6b020}
+.connection-card[data-connection-state="invalid"] .connection-indicator{background:#f08080;box-shadow:0 0 0 5px #f0808020}
+.connection-copy{min-width:0}
+.connection-copy h3{font:600 14px "Space Grotesk";margin:0 0 5px}
+.connection-copy p{font-size:11px;line-height:1.7;color:#9aa6bd;margin:0}
+.connection-state{margin-left:auto;white-space:nowrap;font-size:9px;letter-spacing:1px;color:#c4baff;border:1px solid #514879;border-radius:30px;padding:7px 9px}
+.connection-card[data-connection-state="invalid"] .connection-state{color:#ffaaaa;border-color:#70444b}
+.integration-note{max-width:850px;margin:12px 0 0;color:#7f8ca5;font-size:10px;line-height:1.8}
+@media(max-width:700px){.connection-card{align-items:flex-start;flex-wrap:wrap;padding:16px}.connection-copy{flex:1}.connection-state{margin-left:25px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.nav-link,.tool-card{transition:none}.tool-card:hover{transform:none}}
+
+
+/* Phase 3.8: browser MCP controls and accessible analysis output. */
+.connection-action,.tool-action,.tool-output-heading button{
+  border:1px solid #514879;border-radius:7px;background:#29244d;color:#d8d2ff;
+  padding:9px 12px;font:600 10px "DM Sans",sans-serif;cursor:pointer;white-space:nowrap
+}
+.connection-action{margin-left:auto}
+.connection-action:hover,.tool-action:hover,.tool-output-heading button:hover{background:#3a326b}
+.connection-action:disabled,.tool-action:disabled{opacity:.45;cursor:not-allowed}
+.tool-input-label{display:grid;gap:6px;margin:12px 0;color:#9da9c0;font-size:10px}
+.tool-input-label input{width:100%;min-width:0;border:1px solid #35415c;border-radius:6px;background:#0d1528;color:#e8ecf7;padding:9px;font:11px "DM Sans",sans-serif}
+.tool-input-label input:focus-visible,.connection-action:focus-visible,.tool-action:focus-visible,.tool-output-heading button:focus-visible{outline:2px solid #b8adff;outline-offset:3px}
+.tool-output{margin-top:18px;border:1px solid #2b3650;border-radius:11px;background:#0e1729;padding:16px}
+.tool-output[hidden]{display:none}
+.tool-output-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.tool-output-heading h3{font:600 14px "Space Grotesk";margin:0}
+.tool-output pre{max-height:520px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#b7c3d9;font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 0}
+@media(max-width:700px){.connection-action{margin-left:25px}.tool-action{padding:8px 9px;font-size:9px}}

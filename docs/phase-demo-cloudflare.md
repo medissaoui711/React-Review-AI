@@ -142,3 +142,41 @@ After separate owner approval for account changes and deployment:
 ### D5 boundary
 
 D5 implementation does not perform account discovery, account mutation, billing changes, secret configuration, resource creation, or deployment. Those actions require separate explicit approval. D6 live OAuth/ChatGPT certification cannot begin until the public HTTPS endpoint and real external provider configuration exist.
+
+## Phase 3.8 browser integration contract
+
+The static Pages dashboard now contains an MCP browser client based on the official `@modelcontextprotocol/client` SDK. The browser flow is Authorization Code with PKCE; it does not use a client secret or dynamic client registration.
+
+### Pages build-time configuration
+
+- `VITE_MCP_ENDPOINT`: exact public HTTPS MCP endpoint ending in `/mcp`. HTTP is accepted only for local loopback development.
+- `VITE_OAUTH_CLIENT_ID`: public client identifier for the pre-registered Auth0 Single Page Application. This value is not a secret. Never define a `VITE_*_CLIENT_SECRET`.
+- `VITE_OAUTH_ISSUER`: exact canonical HTTPS issuer URL from Auth0 discovery (including its trailing slash where present). The browser provider refuses to send the client ID to any issuer that does not exactly match this value.
+
+These values are build-time frontend configuration. They are not automatically inferred from Worker settings. The Pages build must be configured separately by the account owner; no Cloudflare project settings were changed by Phase 3.8. The issuer must match the Worker's `OAUTH_ISSUER_URL` exactly.
+
+### Auth0 public-client setup
+
+Before enabling browser connectivity, the owner must configure the Auth0 application as a Single Page Application with:
+
+1. Authorization Code grant and PKCE (S256); no client secret in the browser.
+2. Allowed Callback URL equal to the production dashboard URL `https://react-review-ai.pages.dev/` (or the exact preview URL when validating a preview build).
+3. Allowed Web Origin equal to `https://react-review-ai.pages.dev` (and the exact preview origin only when preview testing is intended).
+4. API audience equal to the exact MCP resource URL, including `/mcp`.
+5. The `review:read` API permission and RS256/ES256 access-token signing compatible with the resource server.
+6. Auth0 CORS/allowed origins for `https://react-review-ai.pages.dev`, as required by the tenant configuration.
+7. Enable **Resource Parameter Compatibility Profile** in Auth0 Dashboard → Settings → Advanced. The MCP SDK sends the RFC 8707 `resource` parameter; without this profile Auth0 can fall back to the userinfo audience instead of the configured API audience. See [Auth0's MCP audience guidance](https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0).
+
+The SDK performs protected-resource and authorization-server metadata discovery, validates issuer binding, handles the PKCE code exchange, and reconnects using a fresh Streamable HTTP transport. Callback `state` is checked before code exchange. Callback error descriptions are never rendered.
+
+### Browser storage and CORS
+
+- Access and refresh tokens are held in memory only and are not written to `localStorage` or `sessionStorage`.
+- The PKCE verifier, OAuth state, and non-secret discovery metadata are stored in `sessionStorage` only to survive the authorization redirect; the transaction expires after 10 minutes and is cleared after callback processing.
+- The Worker allows only explicit HTTPS Origins listed by hostname in `MCP_ALLOWED_ORIGIN_HOSTS`; wildcard Origins are not supported. For the verified production Pages site, the expected hostname entry is `react-review-ai.pages.dev` (hostname only, with no scheme or port).
+- CORS preflight permits MCP `GET` and `POST` requests (and metadata `GET`), including SDK headers such as `Mcp-Method` and `Mcp-Name`, and exposes the authentication and protocol response headers needed by the browser client.
+- For browser `tools/call` requests, missing/invalid bearer tokens return HTTP `401` and insufficient scope returns HTTP `403`, preserving `WWW-Authenticate` so the official MCP SDK can start or renew authorization. Non-browser hosts without an Origin retain the existing MCP-level authentication challenge behavior.
+
+### Phase 3.8 validation boundary
+
+Source-level and CI tests do not establish live browser authentication. The actual flow remains unverified until the owner configures the Pages build variables, registers the exact callback/origin in Auth0, configures the matching Worker issuer/JWKS/resource audience and trusted Origin, and deploys the backend under a separately approved plan. No backend deployment, Cloudflare account change, Auth0 tenant mutation, or billing change is included in Phase 3.8.
