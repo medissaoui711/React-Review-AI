@@ -117,8 +117,8 @@ function registerReadOnlyTool(server, name, config, handler, oauth) {
   });
 }
 
-export async function createServer() {
-  const review = await createReviewService(process.env.REACT_REVIEW_ROOT);
+export async function createServer({ metrics } = {}) {
+  const review = await createReviewService(process.env.REACT_REVIEW_ROOT, { metrics });
   const oauth = oauthToolConfig();
   const server = new McpServer({
     ...SERVER_INFO,
