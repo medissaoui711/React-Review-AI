@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   OAuthError,
-  OAuthErrorCode,
-  requireBearerAuth
+  OAuthErrorCode
 } from '@modelcontextprotocol/server';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
@@ -112,7 +111,7 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
 
   const keySet = jwks ?? createRemoteJWKSet(config.jwksUrl, {
     timeoutDuration: 5_000,
-    cooldownDuration: 30_000,
+    cooldownDuration: 5_000,
     cacheMaxAge: 300_000
   });
   const verifier = createJwtTokenVerifier({
@@ -120,12 +119,49 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
     resource: config.resource,
     jwks: keySet
   });
-  const authenticate = requireBearerAuth({
-    verifier,
-    requiredScopes: [config.scope],
-    expectedResource: config.resource,
-    resourceMetadataUrl: config.metadataUrl
-  });
+  const buildChallenge = (errorCode, description) => {
+    const allowed = errorCode === 'insufficient_scope' ? 'insufficient_scope' : 'invalid_token';
+    return `Bearer resource_metadata="${config.metadataUrl}", scope="${config.scope}", error="${allowed}", error_description="${safeErrorDescription(description)}"`;
+  };
+
+  const authenticate = async request => {
+    const authorization = request.headers.get('authorization') || '';
+    const match = /^Bearer\s+([^\s]+)$/i.exec(authorization);
+    if (!match) {
+      return new Response('Unauthorized', {
+        status: 401,
+        headers: {
+          'Cache-Control': 'no-store',
+          'WWW-Authenticate': buildChallenge('invalid_token', 'A bearer access token is required.')
+        }
+      });
+    }
+
+    let authInfo;
+    try {
+      authInfo = await verifier.verifyAccessToken(match[1]);
+    } catch (error) {
+      if (!(error instanceof OAuthError)) throw error;
+      return new Response('Unauthorized', {
+        status: 401,
+        headers: {
+          'Cache-Control': 'no-store',
+          'WWW-Authenticate': buildChallenge('invalid_token', 'The access token is invalid or expired.')
+        }
+      });
+    }
+
+    if (!authInfo.scopes.includes(config.scope)) {
+      return new Response('Forbidden', {
+        status: 403,
+        headers: {
+          'Cache-Control': 'no-store',
+          'WWW-Authenticate': buildChallenge('insufficient_scope', 'The access token does not include the required scope.')
+        }
+      });
+    }
+    return authInfo;
+  };
 
   const metadata = Object.freeze({
     resource: config.resource.href,
@@ -138,8 +174,7 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
     config,
     authenticate,
     challenge(errorCode = 'invalid_token', description = 'Authentication is required.') {
-      const allowed = errorCode === 'insufficient_scope' ? 'insufficient_scope' : 'invalid_token';
-      return `Bearer resource_metadata="${config.metadataUrl}", scope="${config.scope}", error="${allowed}", error_description="${safeErrorDescription(description)}"`;
+      return buildChallenge(errorCode, description);
     },
     metadataResponse() {
       return Response.json(metadata, {

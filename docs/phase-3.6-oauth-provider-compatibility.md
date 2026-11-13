@@ -23,6 +23,10 @@ The automated provider simulator exercises discovery, DCR, PKCE S256, resource b
 A production validation still requires a real provider tenant, HTTPS public MCP endpoint, configured redirect URI/client registration, and a connection test from ChatGPT's MCP settings. Until those are available, the repository must report live ChatGPT OAuth validation as pending.
 
 
-## MCP Inspector CLI validation note
+## MCP Inspector CLI validation
 
-The official MCP Inspector CLI v2.14.0 was evaluated in CI with `--protocol-era modern`. Its pinned `server/discover` negotiation did not recognize the modern revision offered by this server, while the official MCP TypeScript SDK Client 2.4.0 successfully negotiated the same modern revision in pinned mode over both STDIO and Streamable HTTP and completed all tool calls. To avoid a false CI failure, the Inspector CLI step is not treated as a release gate for this PR; automated protocol verification uses the official SDK client with an explicit modern-era assertion. A manual Inspector UI/CLI interoperability pass remains a follow-up validation item.
+The official MCP Inspector CLI v2.14.0 is now a blocking CI compatibility check on both transports. CI invokes it with `--protocol-era modern`, asserts that `tools/list` returns all four registered tools, and passes the trusted `REACT_REVIEW_ROOT` explicitly to the STDIO child process with Inspector's `-e` option. The HTTP check targets the live local Streamable HTTP endpoint.
+
+The earlier STDIO negotiation failure was caused by the diagnostic child process starting without the required `REACT_REVIEW_ROOT`, not by a protocol-version mismatch. Supplying the environment variable fixed the CLI test. A separate raw-wire regression test also verifies that `resultType`, `supportedVersions`, and server identity metadata are nested under the JSON-RPC `result` object as required by the 2026-07-28 discovery schema.
+
+Verified in [MCP CI run 302](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396703329): Inspector modern STDIO and HTTP checks passed. The Inspector Web UI has not yet had a manual interactive validation pass. Inspector strict schema checks report zero errors; remaining warnings concern nullable JSON Schema type arrays, which are valid under JSON Schema 2020-12 but less portable to some non-JSON-Schema provider dialects.

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import test from 'node:test';
 import { analyzeSource, summarizeFindings } from '../server/analysis-engine.mjs';
+import { createAnalysisRunner } from '../server/analysis-runner.mjs';
 
 test('AST engine detects multiline JSX attributes and reports precise locations', () => {
   const source = `export function Example() {
@@ -75,4 +77,39 @@ test('finding summaries expose stable severity and category counts', () => {
   assert.equal(summary.total, 1);
   assert.equal(summary.by_severity.Medium, 1);
   assert.equal(summary.by_category.Accessibility, 1);
+});
+
+test('isolated analysis worker returns AST findings through the parent runner', async () => {
+  const runner = createAnalysisRunner();
+  try {
+    const result = await runner.analyze('src/Worker.jsx', '<img src="/x.svg" />', 5000);
+    assert.equal(result.timed_out, undefined);
+    assert.ok(result.findings.some(item => item.rule_id === 'jsx/a11y/img-alt'));
+  } finally {
+    await runner.close();
+  }
+});
+
+test('analysis runner terminates an unresponsive worker at its deadline', async () => {
+  class UnresponsiveWorker extends EventEmitter {
+    terminated = false;
+    postMessage() {}
+    async terminate() {
+      this.terminated = true;
+      return 1;
+    }
+  }
+
+  let worker;
+  const runner = createAnalysisRunner({
+    workerFactory: () => {
+      worker = new UnresponsiveWorker();
+      return worker;
+    }
+  });
+  const result = await runner.analyze('src/Slow.jsx', 'const value = 1;', 5);
+  assert.equal(result.timed_out, true);
+  assert.equal(result.skipped_reason, 'analysis_timeout');
+  assert.equal(worker.terminated, true);
+  await runner.close();
 });

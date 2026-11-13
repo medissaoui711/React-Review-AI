@@ -1,4 +1,5 @@
 import { createServer as createNodeServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {
   createMcpHandler,
@@ -9,6 +10,8 @@ import {
 } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
+import { createReviewService } from './review.mjs';
+import { createRuntimeMetrics } from './metrics.mjs';
 import {
   createOAuthRuntime,
   createRequestRateLimiter,
@@ -48,8 +51,8 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     throw new Error('Remote MCP_PUBLIC_URL must use HTTPS.');
   }
 
-  const allowedHosts = [...localhostAllowedHostnames()];
-  const allowedOrigins = [...localhostAllowedOrigins()];
+  const allowedHosts = remoteBind ? [] : [...localhostAllowedHostnames()];
+  const allowedOrigins = remoteBind ? [] : [...localhostAllowedOrigins()];
   const configuredOrigins = (env.MCP_ALLOWED_ORIGIN_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
   for (const hostname of configuredOrigins) {
     const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
@@ -57,11 +60,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     if (!validDnsName && !validIpv6Name) {
       throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, or wildcards.');
     }
-    allowedOrigins.push(hostname);
+    allowedOrigins.push(hostname.toLowerCase());
   }
   if (oauth) {
     allowedHosts.push(oauth.config.resource.hostname);
-    allowedOrigins.push(oauth.config.resource.hostname);
   }
 
   const readPositiveLimit = (name, fallback) => {
@@ -78,13 +80,26 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     maxRequests: readPositiveLimit('MCP_RATE_LIMIT_PER_IP_PER_MINUTE', 300),
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
-  const mcp = createMcpHandler(createServer, { legacy: 'reject' });
+  const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
+  const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 4);
+  let activeRequests = 0;
+  const metrics = createRuntimeMetrics();
+  const isReady = async () => {
+    try {
+      await createReviewService(env.REACT_REVIEW_ROOT);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const mcp = createMcpHandler(() => createServer({ metrics, env }), { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
       const url = new URL(request.url);
       const isMetadataRequest = oauth && url.pathname === '/.well-known/oauth-protected-resource';
-      if (url.pathname !== MCP_PATH && !isMetadataRequest) {
+      const isHealthRequest = url.pathname === '/healthz' || url.pathname === '/readyz';
+      if (url.pathname !== MCP_PATH && !isMetadataRequest && !isHealthRequest) {
         return new Response('Not Found', { status: 404 });
       }
 
@@ -93,6 +108,20 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
       const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
+
+      if (isHealthRequest) {
+        if (request.method.toUpperCase() !== 'GET') {
+          return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
+        }
+        if (url.pathname === '/healthz') {
+          return Response.json({ status: 'ok' }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+        const ready = await isReady();
+        return Response.json({ status: ready ? 'ready' : 'not_ready' }, {
+          status: ready ? 200 : 503,
+          headers: { 'Cache-Control': 'no-store' }
+        });
+      }
 
       if (isMetadataRequest) {
         if (request.method.toUpperCase() !== 'GET') {
@@ -109,7 +138,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       }
 
       const rateLimitResponse = rateLimit(request);
-      if (rateLimitResponse) return rateLimitResponse;
+      if (rateLimitResponse) {
+        metrics.recordRateLimit();
+        return rateLimitResponse;
+      }
 
       const boundedRequest = await enforceRequestBodyLimit(request);
       if (boundedRequest instanceof Response) return boundedRequest;
@@ -121,7 +153,15 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       if (oauth && await isToolCallRequest(safeRequest)) {
         const authorization = safeRequest.headers.get('authorization');
         if (authorization) {
-          const authResult = await oauth.authenticate(safeRequest);
+          let authResult;
+          try {
+            authResult = await oauth.authenticate(safeRequest);
+          } catch {
+            return new Response('Authentication service temporarily unavailable.', {
+              status: 503,
+              headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' }
+            });
+          }
           if (authResult instanceof Response) {
             const insufficientScope = authResult.status === 403;
             return mcp.fetch(safeRequest, {
@@ -143,30 +183,96 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
   const nodeHandler = toNodeHandler(guardedHandler);
   const server = createNodeServer(
-    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000 },
+    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000 },
     (request, response) => {
+      const requestId = randomUUID();
+      const startedAt = Date.now();
+      const requestPath = new URL(request.url, 'http://localhost').pathname;
+      const route = requestPath === MCP_PATH
+        ? 'mcp'
+        : requestPath === '/healthz'
+          ? 'health'
+          : requestPath === '/readyz'
+            ? 'readiness'
+            : requestPath === '/.well-known/oauth-protected-resource'
+              ? 'oauth_metadata'
+              : 'other';
+      response.setHeader('X-Request-Id', requestId);
+      let logged = false;
+      const writeRequestLog = event => {
+        if (logged) return;
+        logged = true;
+        const status = event === 'http_request_aborted' && !response.headersSent ? null : response.statusCode;
+        metrics.recordHttp({ route, status, durationMs: Date.now() - startedAt, aborted: event === 'http_request_aborted' });
+        console.error(JSON.stringify({
+          level: 'info',
+          event,
+          request_id: requestId,
+          method: request.method,
+          route,
+          status,
+          duration_ms: Math.max(0, Date.now() - startedAt)
+        }));
+      };
+      response.once('finish', () => writeRequestLog('http_request'));
+      response.once('close', () => {
+        if (!response.writableFinished) writeRequestLog('http_request_aborted');
+      });
+
+      const isHealthProbe = request.method === 'GET' && (requestPath === '/healthz' || requestPath === '/readyz');
       const rateRequest = new Request('http://rate-limit.internal/', {
         headers: { 'x-mcp-rate-limit-key': request.socket.remoteAddress || 'unknown' }
       });
-      const rejection = networkRateLimit(rateRequest);
+      const rejection = isHealthProbe ? null : networkRateLimit(rateRequest);
       if (rejection) {
+        metrics.recordRateLimit();
         response.writeHead(rejection.status, Object.fromEntries(rejection.headers));
         response.end('Too Many Requests');
         return;
       }
+      if (!isHealthProbe && activeRequests >= maxConcurrentRequests) {
+        metrics.recordOverloaded();
+        response.writeHead(503, { 'Retry-After': '1', 'Cache-Control': 'no-store' });
+        response.end('Service Unavailable');
+        return;
+      }
+      if (!isHealthProbe) {
+        activeRequests += 1;
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          activeRequests = Math.max(0, activeRequests - 1);
+        };
+        response.once('finish', release);
+        response.once('close', release);
+      }
       nodeHandler(request, response);
     }
   );
+  server.maxRequestsPerSocket = 1_000;
 
   return {
     server,
+    getMetrics() { return metrics.snapshot(); },
     async close() {
-      if (server.listening) {
-        await new Promise((resolve, reject) => {
-          server.close((error) => error ? reject(error) : resolve());
-        });
+      if (!server.listening) {
+        await mcp.close();
+        return;
       }
-      await mcp.close();
+      let shutdownTimer;
+      const closePromise = new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
+      server.closeIdleConnections?.();
+      shutdownTimer = setTimeout(() => server.closeAllConnections?.(), shutdownTimeoutMs);
+      shutdownTimer.unref?.();
+      try {
+        await closePromise;
+      } finally {
+        clearTimeout(shutdownTimer);
+        await mcp.close();
+      }
     }
   };
 }
@@ -175,7 +281,8 @@ const isDirectExecution = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  const port = Number.parseInt(process.env.PORT || '3000', 10);
+  const rawPort = process.env.PORT || '3000';
+  const port = /^\d+$/.test(rawPort) ? Number(rawPort) : Number.NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
   }
@@ -186,7 +293,10 @@ if (isDirectExecution) {
     console.error(`React Review AI Streamable HTTP listening at http://${host}:${port}${MCP_PATH}`);
   });
 
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     try {
       await runtime.close();
       process.exitCode = 0;

@@ -7,51 +7,52 @@ const SERVER_INFO = { name: 'react-review-ai', version: '0.6.0' };
 const findingSchema = z.object({
   id: z.string(), rule_id: z.string(), severity: z.enum(['Critical', 'High', 'Medium', 'Low', 'Info']),
   category: z.string(), confidence: z.enum(['low', 'medium', 'high', 'heuristic']),
-  file: z.string(), line: z.number().nullable(), column: z.number().nullable(),
+  file: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]),
   evidence: z.string(), explanation: z.string(), recommendation: z.string(), verification: z.string()
-}).passthrough();
+}).strict();
 const summarySchema = z.object({
   total: z.number(),
   by_severity: z.record(z.string(), z.number()),
   by_category: z.record(z.string(), z.number())
-}).passthrough();
+}).strict();
 const executionSchema = z.object({
   bytes_read: z.number().optional(), truncated: z.boolean(), timed_out: z.boolean(),
   duration_ms: z.number().optional()
-}).passthrough();
+}).strict();
 const outputSchemas = {
   review_project: z.object({ data: z.object({
     product: z.string(), mode: z.string(), project_scope: z.string(),
     scanned_file_count: z.number(), source_file_count: z.number(),
-    detected: z.record(z.string(), z.unknown()), summary: summarySchema,
-    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.number().nullable(), column: z.number().nullable() }).passthrough()),
+    limits: z.object({ maxFiles: z.number(), maxFileBytes: z.number(), maxTotalBytes: z.number(), maxDurationMs: z.number(), maxFindings: z.number() }).strict(),
+    detected: z.object({ react: z.boolean(), typescript: z.boolean(), test_tools: z.array(z.string()) }).strict(), summary: summarySchema,
+    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]) }).strict()),
     skipped_files: z.array(z.object({ file: z.string(), reason: z.string() })),
     execution: executionSchema, limitations: z.array(z.string())
-  }).passthrough() }),
+  }).strict() }),
   review_component: z.object({ data: z.object({
     file: z.string(), mode: z.string(), summary: summarySchema,
     findings: z.array(findingSchema), parse_error: z.object({
-      message: z.string(), line: z.number().nullable(), column: z.number().nullable()
-    }).nullable(), skipped_reason: z.string().nullable()
-  }).passthrough() }),
+      message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()])
+    }).nullable(), skipped_reason: z.union([z.enum(['source_exceeds_parser_limit', 'parse_error', 'analysis_timeout', 'analysis_worker_error']), z.null()]), timed_out: z.boolean().optional()
+  }).strict() }),
   run_test_audit: z.object({ data: z.object({
     mode: z.string(), test_file_count: z.number(), test_files: z.array(z.string()),
     related_config_files: z.array(z.string()), detected_frameworks: z.array(z.string()),
-    test_scripts: z.record(z.string(), z.unknown()), inventory_truncated: z.boolean(), note: z.string()
-  }).passthrough() }),
+    test_scripts: z.record(z.string(), z.string()), inventory_truncated: z.boolean(), note: z.string()
+  }).strict() }),
   audit_accessibility: z.object({ data: z.object({
     standard_target: z.string(), mode: z.string(), scanned_source_files: z.number(),
     summary: summarySchema, findings: z.array(findingSchema),
-    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.number().nullable(), column: z.number().nullable() }).passthrough()),
+    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]) }).strict()),
     execution: executionSchema, limitations: z.array(z.string())
-  }).passthrough() })
+  }).strict() })
 };
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false
 };
 
-function oauthToolConfig() {
-  const config = readAuthConfig(process.env, { allowHttpLoopback: process.env.NODE_ENV === 'test' });
+function oauthToolConfig(env = process.env) {
+  const config = readAuthConfig(env, { allowHttpLoopback: env.NODE_ENV === 'test' });
   const configured = Boolean(config);
   const scope = config?.scope || 'review:read';
   const runtime = config ? {
@@ -117,9 +118,9 @@ function registerReadOnlyTool(server, name, config, handler, oauth) {
   });
 }
 
-export async function createServer() {
-  const review = await createReviewService(process.env.REACT_REVIEW_ROOT);
-  const oauth = oauthToolConfig();
+export async function createServer({ metrics, env = process.env } = {}) {
+  const review = await createReviewService(env.REACT_REVIEW_ROOT, { metrics });
+  const oauth = oauthToolConfig(env);
   const server = new McpServer({
     ...SERVER_INFO,
     instructions: [
@@ -142,7 +143,7 @@ export async function createServer() {
 
   registerReadOnlyTool(server, 'review_component', {
     title: 'Review React Component',
-    description: 'AST-based review of one source file relative to the trusted project root. Absolute paths and project-root overrides are rejected.',
+    description: 'Read-only AST review of one source file in an isolated worker with an enforceable analysis timeout. Absolute paths and project-root overrides are rejected.',
     inputSchema: z.object({
       file_path: z.string().min(1).describe('Path to one source file, relative to the trusted project root.')
     }).strict()

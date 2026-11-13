@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { analyzeSource, summarizeFindings } from './analysis-engine.mjs';
+import { summarizeFindings } from './analysis-engine.mjs';
+import { createAnalysisRunner } from './analysis-runner.mjs';
 
 const ignored = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.turbo']);
 const extensions = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts']);
@@ -80,7 +81,7 @@ function inventoryMetadata(all, sourceFiles) {
   };
 }
 
-export async function createReviewService(configuredRoot) {
+export async function createReviewService(configuredRoot, { metrics } = {}) {
   if (typeof configuredRoot !== 'string' || !configuredRoot.trim()) throw new Error('REACT_REVIEW_ROOT must be set to an absolute project directory before the server starts.');
   if (!path.isAbsolute(configuredRoot)) throw new Error('REACT_REVIEW_ROOT must be an absolute path.');
   let root;
@@ -90,27 +91,61 @@ export async function createReviewService(configuredRoot) {
 
   async function collectSource() {
     const budget = { startedAt: Date.now(), bytesRead: 0, truncated: false, timedOut: false };
-    const all = await walk(root, budget);
-    const source = all.filter(item => extensions.has(path.extname(item.file).toLowerCase()));
-    const findings = [];
-    const parseErrors = [];
-    const skipped = [];
-    for (const item of source) {
-      if (Date.now() - budget.startedAt >= LIMITS.maxDurationMs) { budget.timedOut = true; break; }
-      if (budget.bytesRead + item.size > LIMITS.maxTotalBytes) { budget.truncated = true; break; }
-      if (item.size > LIMITS.maxFileBytes) { skipped.push({ file: path.relative(root, item.file), reason: 'file_exceeds_limit' }); continue; }
-      const relative = path.relative(root, item.file);
-      const content = await readLimited(item.file, LIMITS.maxTotalBytes - budget.bytesRead);
-      if (content === null) { skipped.push({ file: relative, reason: 'unreadable_or_changed_during_scan' }); continue; }
-      budget.bytesRead += Buffer.byteLength(content, 'utf8');
-      const result = analyzeSource(relative, content);
-      findings.push(...result.findings);
-      if (result.parse_error) parseErrors.push({ file: relative, ...result.parse_error });
-      if (result.skipped_reason) skipped.push({ file: relative, reason: result.skipped_reason });
-      if (findings.length >= LIMITS.maxFindings) { findings.length = LIMITS.maxFindings; budget.truncated = true; break; }
+    const runner = createAnalysisRunner();
+    try {
+      const all = await walk(root, budget);
+      if (Date.now() - budget.startedAt >= LIMITS.maxDurationMs) budget.timedOut = true;
+      if (all.length >= LIMITS.maxFiles) budget.truncated = true;
+      const source = all.filter(item => extensions.has(path.extname(item.file).toLowerCase()));
+      const findings = [];
+      const parseErrors = [];
+      const skipped = [];
+
+      for (const item of source) {
+        const elapsed = Date.now() - budget.startedAt;
+        if (elapsed >= LIMITS.maxDurationMs) { budget.timedOut = true; break; }
+        if (budget.bytesRead + item.size > LIMITS.maxTotalBytes) { budget.truncated = true; break; }
+        if (item.size > LIMITS.maxFileBytes) { skipped.push({ file: path.relative(root, item.file), reason: 'file_exceeds_limit' }); continue; }
+        const relative = path.relative(root, item.file);
+        const content = await readLimited(item.file, LIMITS.maxTotalBytes - budget.bytesRead);
+        if (content === null) { skipped.push({ file: relative, reason: 'unreadable_or_changed_during_scan' }); continue; }
+        budget.bytesRead += Buffer.byteLength(content, 'utf8');
+
+        const remainingMs = LIMITS.maxDurationMs - (Date.now() - budget.startedAt);
+        if (remainingMs < 1) { budget.timedOut = true; break; }
+        let result;
+        try {
+          result = await runner.analyze(relative, content, remainingMs);
+        } catch {
+          skipped.push({ file: relative, reason: 'analysis_worker_error' });
+          parseErrors.push({ file: relative, message: 'Isolated AST analysis worker failed.', line: null, column: null });
+          budget.truncated = true;
+          break;
+        }
+        if (result.timed_out) {
+          budget.timedOut = true;
+          skipped.push({ file: relative, reason: 'analysis_timeout' });
+          break;
+        }
+        findings.push(...result.findings);
+        if (result.parse_error) parseErrors.push({ file: relative, ...result.parse_error });
+        if (result.skipped_reason) skipped.push({ file: relative, reason: result.skipped_reason });
+        if (findings.length >= LIMITS.maxFindings) { findings.length = LIMITS.maxFindings; budget.truncated = true; break; }
+      }
+
+      findings.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.rule_id.localeCompare(b.rule_id));
+      metrics?.recordAnalysis?.({
+        durationMs: Date.now() - budget.startedAt,
+        parseErrors: parseErrors.length,
+        timedOut: budget.timedOut,
+        truncated: budget.truncated,
+        findings: findings.length,
+        bytesRead: budget.bytesRead
+      });
+      return { all, source, findings, parseErrors, skipped, budget };
+    } finally {
+      await runner.close();
     }
-    findings.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.rule_id.localeCompare(b.rule_id));
-    return { all, source, findings, parseErrors, skipped, budget };
   }
 
   async function reviewProject() {
@@ -152,14 +187,32 @@ export async function createReviewService(configuredRoot) {
     const content = await readLimited(file);
     if (content === null) throw new Error('File unavailable, too large, or not a regular text file.');
     const relative = path.relative(root, file);
-    const result = analyzeSource(relative, content);
+    const startedAt = Date.now();
+    const runner = createAnalysisRunner();
+    let result;
+    try {
+      result = await runner.analyze(relative, content, LIMITS.maxDurationMs);
+    } catch {
+      result = { findings: [], parse_error: null, skipped_reason: 'analysis_worker_error', timed_out: false };
+    } finally {
+      await runner.close();
+    }
+    metrics?.recordAnalysis?.({
+      durationMs: Date.now() - startedAt,
+      parseErrors: result.parse_error ? 1 : 0,
+      timedOut: Boolean(result.timed_out),
+      truncated: ['analysis_timeout', 'analysis_worker_error', 'source_exceeds_parser_limit'].includes(result.skipped_reason),
+      findings: result.findings.length,
+      bytesRead: Buffer.byteLength(content, 'utf8')
+    });
     return {
       file: relative,
-      mode: 'read-only AST-based static analysis',
+      mode: 'read-only AST analysis in an isolated worker',
       summary: summarizeFindings(result.findings),
       findings: result.findings,
       parse_error: result.parse_error,
-      skipped_reason: result.skipped_reason
+      skipped_reason: result.skipped_reason,
+      timed_out: Boolean(result.timed_out)
     };
   }
 

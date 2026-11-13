@@ -1,0 +1,37 @@
+# Phase 3.7 — Evidence and certification matrix
+
+**Implementation branch:** phase-3.7-production-hardening  
+**Base main SHA:** 8087b028dfc598ded19fc942a40b54680c87193f  
+**Repository visibility:** public; preserved  
+**Matrix rule:** `IMPLEMENTED` means code/configuration exists; it does not mean tests passed. `PASS` requires an observed test result or external evidence.
+
+| Work package | Evidence added on branch | Current status | Remaining evidence / gate |
+|---|---|---|---|
+| 3.7.1 Governance | SECURITY.md, CODEOWNERS, PR template, frozen spec, owner-action checklist | IMPLEMENTED | Main ruleset/branch protection and secret-scanning settings require owner authorization |
+| 3.7.2 Supply chain | Dependabot, immutable action pins, dependency review workflow, npm audit gate; Zod upgraded to 4.6.7 | PARTIAL — [security run 180](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946912): npm audit passed; both CodeQL jobs passed; Dependency Review is blocked | Enable GitHub Dependency Graph, then rerun Dependency Review |
+| 3.7.3 Security scanning and SBOM | CodeQL JS/TS + Actions, CycloneDX 1.5 SBOM, license inventory and uploaded artifact | PASS — [security run 180](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946912): both CodeQL jobs succeeded; [SBOM/license artifact](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946912/artifacts/14023815455) uploaded successfully | Dependency Review is blocked until Dependency Graph is enabled; secret scanning/push protection remain owner settings |
+| 3.7.4 Runtime | /healthz, /readyz, bounded graceful shutdown, strict port/connection limits, remote Host/Origin hardening | PASS — [MCP CI run 307](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819): runtime, concurrency, aborted-request, and bounded-shutdown regression tests passed (56/56 suite) | Real reverse-proxy deployment validation remains external |
+| 3.7.5 OAuth lifecycle | JWKS key-rotation/outage tests, not-before validation, retryable 503 for JWKS infrastructure failures | PASS — [MCP CI run 307](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819): automated OAuth lifecycle tests passed (56/56 suite) | Live provider, revocation and refresh validation remain external |
+| 3.7.6 Observability | Correlation IDs, sanitized JSON request logs, low-cardinality in-process metrics snapshot | PASS — [MCP CI run 307](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819): logging and metrics regression tests passed (56/56 suite) | Exporter, alerting, retention and access policy remain deployment work |
+| 3.7.7 Resilience and performance | AST worker-thread isolation, enforceable parser deadline, HTTP concurrency cap, timeout tests, synthetic 100-file AST benchmark, bounded 100-request modern HTTP load benchmark | PASS — [MCP CI run 307](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819): AST scan 100 files / 102,400 bytes / 100 findings / 0 parse errors / 157.41 ms; modern HTTP load 100/100 successful at concurrency 3, 247.48 req/s, p50 8.74 ms, p95 20.07 ms, p99 28.78 ms; no AST timeout/truncation or HTTP errors; [benchmark artifact](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819/artifacts/14022958059) | Deployment load/soak tests and shared multi-instance rate limits remain |
+| 3.7.8 Release engineering | Manual tag certification workflow, source archive, SBOM, license inventory, SHA-256 manifest, generated release notes | IMPLEMENTED / NOT RUN | No tag or release created; owner must explicitly dispatch after version/tag approval |
+
+## External gates
+
+| External gate | Status |
+|---|---|
+| GitHub Dependency Graph / Dependency Review | BLOCKED — PR #6 confirms the repository Dependency Graph is disabled; owner must enable it |
+| Live HTTPS deployment and reverse-proxy validation | BLOCKED — no deployment endpoint supplied |
+| Real OAuth/OIDC provider validation | BLOCKED — no provider tenant/credentials supplied |
+| Actual ChatGPT connection and tool invocation | BLOCKED — requires reachable deployment and provider |
+| MCP Inspector modern-protocol interoperability | PASS — Inspector CLI v2.14.0 modern-era tools/list passed over STDIO and Streamable HTTP in [MCP CI run 307](https://github.com/medissaoui711/React-Review-AI/actions/runs/43396946819); Inspector Web UI manual pass remains NOT TESTED |
+| Production metrics exporter and alert delivery | BLOCKED — deployment integration not configured |
+| Legal project license selection | BLOCKED — owner decision required |
+| Main branch protection and secret-scanning settings | BLOCKED — separate owner authorization required |
+
+## Evidence integrity
+
+- No test result is marked PASS until a workflow or local test execution result is observed.
+- MCP CI run 307 passed 56/56 tests, pinned modern protocol negotiation, raw server/discover wire-shape validation, all four tools over STDIO and HTTP, Inspector CLI v2.14.0 modern-era tools/list over both transports, the 100-file AST benchmark (157.41 ms), and a 100-request HTTP load test (100 successes, 0 errors, 247.48 requests/sec, p95 20.07 ms). Strict Inspector schema portability checks reported zero errors and zero warnings. Security workflow run 180 passed both CodeQL analyses and npm audit, and uploaded the CycloneDX/license artifact. Its Dependency Review job failed specifically because GitHub reports that Dependency Graph is disabled for this repository; this is a repository feature prerequisite, not a reported vulnerable dependency. PR #6 Dependency Review remains blocked because the repository Dependency Graph is disabled. The benchmark and SBOM/license artifacts are linked in the matrix. An empty commit-status response is not proof that CI passed or failed.
+- No production release, tag, live OAuth connection, or ChatGPT connection has been created or claimed.
+- main must remain at the base SHA until the owner reviews the completed PR and explicitly approves merge.
