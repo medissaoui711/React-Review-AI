@@ -222,6 +222,7 @@ jobs:
           ]);
           console.log('MCP Inspector modern HTTP tools/list: PASS');
           NODE
+          node scripts/run-http-load-test.mjs --url=http://127.0.0.1:$PORT/mcp --requests=120 --concurrency=12 --max-p95-ms=1000
           cat /tmp/react-review-ai-http.log
 
 
@@ -232,7 +233,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: react-review-ai-performance-${{ github.sha }}
-          path: artifacts/performance-benchmark.json
+          path: artifacts/*.json
           if-no-files-found: error
           retention-days: 30
 
