@@ -18,6 +18,7 @@ export default defineConfig({
     entrypoint,
     compatibilityDate: "2026-11-13",
     exports: {
+      JwksEgress: exports.worker(),
       ReactReviewContainer: exports.durableObject({
         storage: "sqlite",
         container: reactReviewContainer,
