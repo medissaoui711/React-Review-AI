@@ -21,3 +21,8 @@ A candidate provider must be validated against the following capabilities before
 The automated provider simulator exercises discovery, DCR, PKCE S256, resource binding, access-token verification, and refresh-token rotation. It is a protocol-contract test, not proof that a named commercial identity provider or ChatGPT has completed a live OAuth connection.
 
 A production validation still requires a real provider tenant, HTTPS public MCP endpoint, configured redirect URI/client registration, and a connection test from ChatGPT's MCP settings. Until those are available, the repository must report live ChatGPT OAuth validation as pending.
+
+
+## MCP Inspector CLI validation note
+
+The official MCP Inspector CLI v2.14.0 was evaluated in CI with `--protocol-era modern`. Its pinned `server/discover` negotiation did not recognize the modern revision offered by this server, while the official MCP TypeScript SDK Client 2.4.0 successfully negotiated the same modern revision in pinned mode over both STDIO and Streamable HTTP and completed all tool calls. To avoid a false CI failure, the Inspector CLI step is not treated as a release gate for this PR; automated protocol verification uses the official SDK client with an explicit modern-era assertion. A manual Inspector UI/CLI interoperability pass remains a follow-up validation item.
