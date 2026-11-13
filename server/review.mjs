@@ -95,6 +95,7 @@ export async function createReviewService(configuredRoot) {
     try {
       const all = await walk(root, budget);
       if (Date.now() - budget.startedAt >= LIMITS.maxDurationMs) budget.timedOut = true;
+      if (all.length >= LIMITS.maxFiles) budget.truncated = true;
       const source = all.filter(item => extensions.has(path.extname(item.file).toLowerCase()));
       const findings = [];
       const parseErrors = [];
