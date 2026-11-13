@@ -1,4 +1,4 @@
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
 interface Env {
   REACT_REVIEW_CONTAINER: DurableObjectNamespace<ReactReviewContainer>;
@@ -8,6 +8,28 @@ interface Env {
   MCP_ALLOWED_ORIGIN_HOSTS?: string;
   MCP_RATE_LIMIT_PER_MINUTE?: string;
   MCP_RATE_LIMIT_PER_IP_PER_MINUTE?: string;
+}
+
+
+export class JwksEgress extends WorkerEntrypoint<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const configuredUrl = this.env.OAUTH_JWKS_URL;
+    if (!configuredUrl) return new Response("JWKS egress is not configured.", { status: 503 });
+
+    const expected = new URL(configuredUrl);
+    const actual = new URL(request.url);
+    if (
+      expected.protocol !== "https:" ||
+      actual.protocol !== "https:" ||
+      actual.hostname !== expected.hostname ||
+      actual.pathname !== expected.pathname ||
+      request.method !== "GET"
+    ) {
+      return new Response("Outbound destination is not allowed.", { status: 403 });
+    }
+
+    return fetch(request, { redirect: "manual" });
+  }
 }
 
 const PORT = 3000;
@@ -46,6 +68,7 @@ export class ReactReviewContainer extends DurableObject<Env> {
       MCP_PUBLIC_URL: new URL("/mcp", publicUrl).href,
       MCP_ALLOWED_HOSTS: "container",
       REACT_REVIEW_ROOT: "/app/demo-project",
+      NODE_EXTRA_CA_CERTS: "/etc/cloudflare/certs/cloudflare-containers-ca.crt",
       MCP_RATE_LIMIT_PER_MINUTE: this.env.MCP_RATE_LIMIT_PER_MINUTE || "120",
       MCP_RATE_LIMIT_PER_IP_PER_MINUTE: this.env.MCP_RATE_LIMIT_PER_IP_PER_MINUTE || "300",
     };
@@ -61,11 +84,17 @@ export class ReactReviewContainer extends DurableObject<Env> {
       throw new Error("OAuth issuer and JWKS configuration must be set before the public demo can start.");
     }
 
+    const jwksUrl = new URL(runtimeEnv.OAUTH_JWKS_URL);
+    if (jwksUrl.protocol !== "https:") {
+      throw new Error("OAuth JWKS URL must use HTTPS.");
+    }
+    await container.interceptOutboundHttps(jwksUrl.hostname, this.ctx.exports.JwksEgress);
+
     if (!container.running) {
       container.start({
         image: container.images.base,
         instance: "basic",
-        enableInternet: true,
+        enableInternet: false,
         env: runtimeEnv,
       });
     }
