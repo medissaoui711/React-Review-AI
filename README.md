@@ -81,7 +81,7 @@ The default bind remains `127.0.0.1`. To bind to a non-loopback interface, all o
 Example:
 
 ```bash
-MCP_HTTP_HOST=127.0.0.1
+MCP_HTTP_HOST=0.0.0.0
 MCP_HTTP_ALLOW_REMOTE=true
 MCP_TRUST_PROXY_TLS=true
 ```
@@ -93,7 +93,7 @@ Prefer keeping the MCP process bound to loopback and exposing it only through a 
 - `Host` and `Origin` allowlists remain enforced.
 - Bearer tokens and authorization headers are never written to application logs.
 - Request bodies are limited to 1 MiB by default.
-- Requests are rate-limited to 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_MINUTE` to change this positive integer.
+- Requests are rate-limited to 300 per socket peer per minute and 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_IP_PER_MINUTE` and `MCP_RATE_LIMIT_PER_MINUTE` respectively to change these positive integers. Behind a reverse proxy, the socket peer is the proxy, so enforce complementary per-client limits at the proxy.
 - HTTP headers, header wait time and request timeout have explicit limits.
 - STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
