@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node server/index.mjs",
-    "check": "node --check server/index.mjs && node --check server/app.mjs && node --check server/http.mjs && node --check server/auth.mjs && node --check server/review.mjs && node --check server/analysis-engine.mjs && node --check server/analysis-runner.mjs && node --check server/analysis-worker.mjs && node --check server/metrics.mjs && node --check scripts/generate-license-inventory.mjs",
+    "check": "node --check server/index.mjs && node --check server/app.mjs && node --check server/http.mjs && node --check server/auth.mjs && node --check server/review.mjs && node --check server/analysis-engine.mjs && node --check server/analysis-runner.mjs && node --check server/analysis-worker.mjs && node --check server/metrics.mjs && node --check scripts/generate-license-inventory.mjs && node --check scripts/run-performance-benchmark.mjs",
     "test": "node --test",
     "start:http": "node server/http.mjs"
   },
