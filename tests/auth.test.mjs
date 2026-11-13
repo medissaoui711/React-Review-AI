@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createServer as createNodeServer } from 'node:http';
+import { createServer as createNodeServer, request as nodeRequest } from 'node:http';
 import {
   createLocalJWKSet,
   createRemoteJWKSet,
@@ -45,6 +45,24 @@ async function tokenFor(privateKey, overrides = {}) {
     .setIssuedAt()
     .setExpirationTime(overrides.expiration || '5m')
     .sign(privateKey);
+}
+
+function remoteHealthRequest(port, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const request = nodeRequest({
+      hostname: 'mcp.example.test',
+      port,
+      path: '/healthz',
+      method: 'GET',
+      headers,
+      lookup: (_hostname, _options, callback) => callback(null, '127.0.0.1', 4)
+    }, response => {
+      response.resume();
+      response.once('end', () => resolve(response.statusCode));
+    });
+    request.once('error', reject);
+    request.end();
+  });
 }
 
 function testEnv(overrides = {}) {
@@ -330,20 +348,21 @@ test('remote HTTP mode rejects localhost Host and Origin aliases', async () => {
       runtime.server.listen(0, '127.0.0.1', resolve);
     });
     const address = runtime.server.address();
-    const base = `http://127.0.0.1:${address.port}/healthz`;
 
-    const localhostHost = await fetch(base, { headers: { host: 'localhost' } });
-    assert.ok([400, 403].includes(localhostHost.status));
+    const localhostHost = await remoteHealthRequest(address.port, { host: 'localhost' });
+    assert.ok([400, 403].includes(localhostHost));
 
-    const publicHostLocalOrigin = await fetch(base, {
-      headers: { host: 'mcp.example.test', origin: 'http://localhost:3000' }
+    const publicHostLocalOrigin = await remoteHealthRequest(address.port, {
+      host: 'mcp.example.test',
+      origin: 'http://localhost:3000'
     });
-    assert.equal(publicHostLocalOrigin.status, 403);
+    assert.equal(publicHostLocalOrigin, 403);
 
-    const trustedOrigin = await fetch(base, {
-      headers: { host: 'mcp.example.test', origin: 'https://client.example.test' }
+    const trustedOrigin = await remoteHealthRequest(address.port, {
+      host: 'mcp.example.test',
+      origin: 'https://client.example.test'
     });
-    assert.equal(trustedOrigin.status, 200);
+    assert.equal(trustedOrigin, 200);
   } finally {
     await runtime.close();
     await rm(parent, { recursive: true, force: true });
