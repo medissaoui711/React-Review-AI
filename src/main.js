@@ -53,7 +53,7 @@ function getMcpConfiguration() {
       endpoint.password ||
       endpoint.search ||
       endpoint.hash ||
-      endpoint.pathname.replace(/\/$/, "") !== "/mcp"
+      endpoint.pathname !== "/mcp"
     ) {
       throw new Error("Invalid MCP endpoint");
     }
