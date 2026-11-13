@@ -142,3 +142,39 @@ After separate owner approval for account changes and deployment:
 ### D5 boundary
 
 D5 implementation does not perform account discovery, account mutation, billing changes, secret configuration, resource creation, or deployment. Those actions require separate explicit approval. D6 live OAuth/ChatGPT certification cannot begin until the public HTTPS endpoint and real external provider configuration exist.
+
+## Phase 3.8 browser integration contract
+
+The static Pages dashboard now contains an MCP browser client based on the official `@modelcontextprotocol/client` SDK. The browser flow is Authorization Code with PKCE; it does not use a client secret or dynamic client registration.
+
+### Pages build-time configuration
+
+- `VITE_MCP_ENDPOINT`: exact public HTTPS MCP endpoint ending in `/mcp`. HTTP is accepted only for local loopback development.
+- `VITE_OAUTH_CLIENT_ID`: public client identifier for the pre-registered Auth0 Single Page Application. This value is not a secret. Never define a `VITE_*_CLIENT_SECRET`.
+
+These values are build-time frontend configuration. They are not automatically inferred from Worker settings. The Pages build must be configured separately by the account owner; no Cloudflare project settings were changed by Phase 3.8.
+
+### Auth0 public-client setup
+
+Before enabling browser connectivity, the owner must configure the Auth0 application as a Single Page Application with:
+
+1. Authorization Code grant and PKCE (S256); no client secret in the browser.
+2. Allowed Callback URL equal to the exact Pages origin and current dashboard path used by the build (normally `https://<pages-host>/`).
+3. Allowed Web Origin equal to the Pages origin.
+4. API audience equal to the exact MCP resource URL, including `/mcp`.
+5. The `review:read` API permission and RS256/ES256 access-token signing compatible with the resource server.
+6. Auth0 CORS/allowed origins for the Pages origin, as required by the tenant configuration.
+
+The SDK performs protected-resource and authorization-server metadata discovery, validates issuer binding, handles the PKCE code exchange, and reconnects using a fresh Streamable HTTP transport. Callback `state` is checked before code exchange. Callback error descriptions are never rendered.
+
+### Browser storage and CORS
+
+- Access and refresh tokens are held in memory only and are not written to `localStorage` or `sessionStorage`.
+- The PKCE verifier, OAuth state, and non-secret discovery metadata are stored in `sessionStorage` only to survive the authorization redirect, then cleared after callback processing.
+- The Worker allows only explicit HTTPS Origins listed by hostname in `MCP_ALLOWED_ORIGIN_HOSTS`; wildcard Origins are not supported.
+- CORS preflight permits the MCP SDK request headers, including `Mcp-Method` and `Mcp-Name`, and exposes the authentication and protocol response headers needed by the browser client.
+- For browser `tools/call` requests without a bearer token, the HTTP server returns a `401` OAuth challenge so the official MCP SDK can begin the browser flow. Non-browser hosts without an Origin retain the existing MCP-level authentication challenge behavior.
+
+### Phase 3.8 validation boundary
+
+Source-level and CI tests do not establish live browser authentication. The actual flow remains unverified until the owner configures the Pages build variables, registers the exact callback/origin in Auth0, configures the matching Worker issuer/JWKS/resource audience and trusted Origin, and deploys the backend under a separately approved plan. No backend deployment, Cloudflare account change, Auth0 tenant mutation, or billing change is included in Phase 3.8.
