@@ -105,6 +105,7 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 - Requests are rate-limited to 300 per socket peer per minute and 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_IP_PER_MINUTE` and `MCP_RATE_LIMIT_PER_MINUTE` respectively to change these positive integers. Behind a reverse proxy, the socket peer is the proxy, so enforce complementary per-client limits at the proxy.
 - HTTP headers, header wait time and request timeout have explicit limits.
 - `MCP_SHUTDOWN_TIMEOUT_MS` controls the bounded graceful-shutdown window (default 10 seconds).
+- `MCP_MAX_CONCURRENT_REQUESTS` caps active non-health HTTP requests (default 8); excess requests receive `503` with `Retry-After: 1`. Liveness/readiness probes bypass this concurrency gate.
 - STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
 
@@ -131,7 +132,7 @@ The server performs static, read-only analysis. It does not modify project files
 
 The HTTP transport writes one JSON log record per completed or aborted request to stderr. Each request receives a server-generated `X-Request-Id` response header. Logs contain only the request ID, HTTP method, a fixed low-cardinality route label, status code, and elapsed milliseconds. They do not include request URLs or query strings, client IP addresses, request/response bodies, cookies, Authorization headers, bearer tokens, or OAuth claims. Health endpoints return only minimal status and are not a metrics or diagnostics surface.
 
-A public metrics endpoint is intentionally not exposed. Production metrics export, alert delivery, retention policy, and log aggregation still require deployment-level integration and an explicit access boundary; they are not claimed as completed by this repository workflow.
+The HTTP runtime exposes a programmatic `getMetrics()` snapshot to its embedding process. It contains bounded route/status counters, request-duration buckets, rate-limit/overload counts, and analysis outcome/resource-budget counters without file paths or user-controlled labels. A public metrics endpoint is intentionally not exposed. Production metrics export, alert delivery, retention policy, and log aggregation still require deployment-level integration and an explicit access boundary; they are not claimed as completed by this repository workflow.
 
 ## Security and supply-chain automation
 
