@@ -419,6 +419,11 @@ async function connectMcp() {
     mcpTransport = pendingTransport;
     const listed = await client.listTools();
     const availableTools = new Set((listed.tools || []).map((tool) => tool.name));
+    const requiredTools = ["review_project", "review_component", "run_test_audit", "audit_accessibility"];
+    const missingTools = requiredTools.filter((name) => !availableTools.has(name));
+    if (missingTools.length) {
+      throw new Error("MCP server is missing required tools: " + missingTools.join(", "));
+    }
     runButtons.forEach((button) => {
       button.disabled = !availableTools.has(button.dataset.runTool);
     });
