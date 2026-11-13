@@ -42,7 +42,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const allowedOrigins = [...localhostAllowedOrigins()];
   const configuredOrigins = (env.MCP_ALLOWED_ORIGIN_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
   for (const hostname of configuredOrigins) {
-    if (!/^(?:[a-z0-9.-]+|\\[[0-9a-f:]+\\])$/i.test(hostname) || hostname.includes('..')) {
+    if (!/^(?:[a-z0-9.-]+|\[[0-9a-f:]+\])$/i.test(hostname) || hostname.includes('..')) {
       throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, paths, or wildcards.');
     }
     allowedOrigins.push(hostname);
