@@ -132,6 +132,10 @@ The server performs static, read-only analysis. It does not modify project files
 
 The manual workflow `.github/workflows/release-certification.yml` certifies an existing version tag, verifies that the tag matches `package.json`, runs syntax checks, the full automated test suite and dependency audit, then creates a source archive, CycloneDX SBOM, license inventory and SHA-256 manifest. It publishes a GitHub Release with generated release notes only when an authorized maintainer explicitly dispatches the workflow with a tag. No release or tag is created by Phase 3.7 implementation.
 
+## Performance evidence
+
+The MCP CI workflow runs a bounded synthetic project scan (100 JSX files, approximately 1 KB each) through the isolated AST worker. It records Node version, OS/architecture, available CPU count, elapsed time, scanned bytes, findings, parse errors, timeout/truncation flags, RSS, and in-process metrics as a 30-day workflow artifact. The gate checks that the synthetic scan stays within the configured 10-second scan ceiling and completes without truncation or parse errors. This is a regression benchmark, not a production capacity claim; deployment-specific load/soak testing remains required.
+
 ## Production certification status
 
 Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector interoperability, and deployment-level monitoring remain owner-controlled gates. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
