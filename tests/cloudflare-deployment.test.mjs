@@ -148,6 +148,8 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /Access and refresh tokens stay in memory/);
   assert.match(main, /BrowserOAuthProvider/);
   assert.match(main, /VITE_OAUTH_CLIENT_ID/);
+  assert.match(main, /VITE_OAUTH_ISSUER/);
+  assert.match(main, /context\.issuer !== this\.issuer/);
   assert.match(main, /StreamableHTTPClientTransport/);
   assert.match(main, /finishAuth\(params\)/);
   assert.match(main, /sessionStorage/);
@@ -194,7 +196,8 @@ test('browser OAuth provider preserves only short-lived PKCE state across redire
   );
 
   const Provider = context.__BrowserOAuthProvider;
-  const provider = new Provider('public-client-id');
+  const issuer = 'https://identity.example.test/';
+  const provider = new Provider('public-client-id', issuer);
   const verifier = 'pkce-verifier-test';
   provider.saveCodeVerifier(verifier);
   provider.saveDiscoveryState({
@@ -205,10 +208,11 @@ test('browser OAuth provider preserves only short-lived PKCE state across redire
 
   assert.equal(provider.pendingState, state);
   assert.equal(provider.codeVerifier(), verifier);
-  assert.equal(provider.clientInformation({ issuer: 'https://identity.example.test/' }).token_endpoint_auth_method, 'none');
-  assert.equal('client_secret' in provider.clientInformation({ issuer: 'https://identity.example.test/' }), false);
+  assert.equal(provider.clientInformation({ issuer }).token_endpoint_auth_method, 'none');
+  assert.equal('client_secret' in provider.clientInformation({ issuer }), false);
+  assert.throws(() => provider.clientInformation({ issuer: 'https://attacker.example.test/' }), /does not match/);
 
-  const restored = new Provider('public-client-id');
+  const restored = new Provider('public-client-id', issuer);
   assert.equal(restored.pendingState, state);
   assert.equal(restored.codeVerifier(), verifier);
   assert.equal(
@@ -225,7 +229,7 @@ test('browser OAuth provider preserves only short-lived PKCE state across redire
   assert.ok([...sessionValues.keys()].every((key) => !/token/i.test(key)));
 
   now += 10 * 60 * 1000 + 1;
-  const expired = new Provider('public-client-id');
+  const expired = new Provider('public-client-id', issuer);
   assert.equal(expired.pendingState, null);
   assert.equal(sessionValues.size, 0);
   assert.throws(() => expired.codeVerifier(), /expired/);
