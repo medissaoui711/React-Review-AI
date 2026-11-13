@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import test from 'node:test';
-import { createLocalJWKSet, generateKeyPair, SignJWT } from 'jose';
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createJwtTokenVerifier } from '../server/auth.mjs';
 
 test('provider-neutral authorization server contract supports discovery, DCR, PKCE S256, resource binding and refresh rotation', async () => {
@@ -202,16 +202,13 @@ test('provider-neutral authorization server contract supports discovery, DCR, PK
     assert.equal(tokenResponse.status, 200);
     const tokens = await tokenResponse.json();
     assert.ok(tokens.refresh_token);
-    const jwks = createLocalJWKSet({
-      keys: [{
-        ...(await import('jose')).exportJWK
-          ? await (await import('jose')).exportJWK(issuerKeys.publicKey)
-          : {},
-        kid: 'provider-simulator-key',
-        alg: 'RS256',
-        use: 'sig'
-      }]
+    const publicJwk = await exportJWK(issuerKeys.publicKey);
+    Object.assign(publicJwk, {
+      kid: 'provider-simulator-key',
+      alg: 'RS256',
+      use: 'sig'
     });
+    const jwks = createLocalJWKSet({ keys: [publicJwk] });
     const tokenVerifier = createJwtTokenVerifier({ issuer, resource, jwks });
     const authInfo = await tokenVerifier.verifyAccessToken(tokens.access_token);
     assert.equal(authInfo.resource.href, resource);
