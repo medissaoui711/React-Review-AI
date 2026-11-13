@@ -40,6 +40,7 @@ Provider simulators and automated tests are not substitutes for these live check
 ## Operational integration — pending deployment design
 
 - [ ] Connect the in-process low-cardinality metrics snapshot to an authenticated metrics exporter or monitoring agent.
+- [ ] Enforce global rate limits at the API gateway/reverse proxy or provide a shared rate-limit store before running multiple application replicas; current counters are process-local.
 - [ ] Define alert thresholds from measured production baselines.
 - [ ] Define log retention, access, and deletion policy.
 - [ ] Validate backup, rollback, and incident-response procedures.
