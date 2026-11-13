@@ -64,10 +64,8 @@ export function createHttpServer(env = process.env) {
   const guardedHandler = {
     fetch: async (request) => {
       const url = new URL(request.url);
-      if (oauth && url.pathname === '/.well-known/oauth-protected-resource') {
-        return oauth.metadataResponse();
-      }
-      if (url.pathname !== MCP_PATH) {
+      const isMetadataRequest = oauth && url.pathname === '/.well-known/oauth-protected-resource';
+      if (url.pathname !== MCP_PATH && !isMetadataRequest) {
         return new Response('Not Found', { status: 404 });
       }
 
@@ -76,6 +74,13 @@ export function createHttpServer(env = process.env) {
 
       const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
+
+      if (isMetadataRequest) {
+        if (request.method.toUpperCase() !== 'GET') {
+          return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
+        }
+        return oauth.metadataResponse();
+      }
 
       if (request.method.toUpperCase() !== 'POST') {
         return new Response('Method Not Allowed', {
