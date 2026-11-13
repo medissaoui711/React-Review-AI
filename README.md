@@ -99,6 +99,10 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 - STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
 
+## Provider-neutral OAuth compatibility
+
+See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibility.md) for the external identity-provider contract, PKCE/resource requirements, refresh-token expectations, and the boundary between simulated tests and live ChatGPT validation.
+
 ## MCP tools
 
 - `review_project`
