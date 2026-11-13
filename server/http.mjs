@@ -38,11 +38,11 @@ export function createHttpServer(env = process.env) {
     throw new Error('Remote MCP_PUBLIC_URL must use HTTPS.');
   }
 
-  const allowedHosts = new Set(localhostAllowedHostnames());
-  const allowedOrigins = new Set(localhostAllowedOrigins());
+  const allowedHosts = [...localhostAllowedHostnames()];
+  const allowedOrigins = [...localhostAllowedOrigins()];
   if (oauth) {
-    allowedHosts.add(oauth.config.resource.hostname);
-    allowedOrigins.add(oauth.config.resource.origin);
+    allowedHosts.push(oauth.config.resource.hostname);
+    allowedOrigins.push(oauth.config.resource.hostname);
   }
 
   const readPositiveLimit = (name, fallback) => {
