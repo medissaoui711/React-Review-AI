@@ -144,7 +144,7 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /endpoint\.search/);
   assert.match(main, /endpoint\.hash/);
   assert.match(main, /!== "\/mcp"/);
-  assert.doesNotMatch(main, /pathname\.replace\(\/\\\/$/);
+  assert.doesNotMatch(main, /pathname\\.replace/);
   assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/i);
   assert.match(main, /Access and refresh tokens stay in memory/);
   assert.match(main, /BrowserOAuthProvider/);
