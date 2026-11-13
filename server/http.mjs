@@ -60,11 +60,13 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     if (!validDnsName && !validIpv6Name) {
       throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, or wildcards.');
     }
-    allowedOrigins.push(hostname);
+    const normalizedHostname = hostname.toLowerCase();
+    const originSchemes = remoteBind ? ['https'] : ['http', 'https'];
+    for (const scheme of originSchemes) allowedOrigins.push(`${scheme}://${normalizedHostname}`);
   }
   if (oauth) {
     allowedHosts.push(oauth.config.resource.hostname);
-    allowedOrigins.push(oauth.config.resource.hostname);
+    allowedOrigins.push(oauth.config.resource.origin);
   }
 
   const readPositiveLimit = (name, fallback) => {
@@ -184,7 +186,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
   const nodeHandler = toNodeHandler(guardedHandler);
   const server = createNodeServer(
-    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 1_000 },
+    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000 },
     (request, response) => {
       const requestId = randomUUID();
       const startedAt = Date.now();
@@ -251,6 +253,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       nodeHandler(request, response);
     }
   );
+  server.maxRequestsPerSocket = 1_000;
 
   return {
     server,
