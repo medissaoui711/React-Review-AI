@@ -34,7 +34,7 @@ The container currently requires outbound network access for remote JWKS retriev
 - `npm test`
 - `npm run cloudflare:build`
 
-The CI workflow validates the Cloudflare build but never runs `cf deploy`. The Cloudflare CLI is pinned in `devDependencies`; its current beta status is an operational caveat.
+The CI workflow validates the Cloudflare build but never runs `cf deploy`. The Cloudflare CLI and Vite plugin v2 beta are pinned in `devDependencies`; both are beta-stage tooling and remain an operational caveat. Plugin v2 is required because it reads `cloudflare.config.ts` directly.
 
 ## Owner-controlled deployment gates
 
