@@ -82,6 +82,8 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
   const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
+  const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 8);
+  let activeRequests = 0;
   const metrics = createRuntimeMetrics();
   const isReady = async () => {
     try {
@@ -224,6 +226,23 @@ export function createHttpServer(env = process.env, authOptions = {}) {
         response.writeHead(rejection.status, Object.fromEntries(rejection.headers));
         response.end('Too Many Requests');
         return;
+      }
+      if (!isHealthProbe && activeRequests >= maxConcurrentRequests) {
+        metrics.recordOverloaded();
+        response.writeHead(503, { 'Retry-After': '1', 'Cache-Control': 'no-store' });
+        response.end('Service Unavailable');
+        return;
+      }
+      if (!isHealthProbe) {
+        activeRequests += 1;
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          activeRequests = Math.max(0, activeRequests - 1);
+        };
+        response.once('finish', release);
+        response.once('close', release);
       }
       nodeHandler(request, response);
     }
