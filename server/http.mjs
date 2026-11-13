@@ -139,7 +139,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       }
 
       const rateLimitResponse = rateLimit(request);
-      if (rateLimitResponse) return rateLimitResponse;
+      if (rateLimitResponse) {
+        metrics.recordRateLimit();
+        return rateLimitResponse;
+      }
 
       const boundedRequest = await enforceRequestBodyLimit(request);
       if (boundedRequest instanceof Response) return boundedRequest;
