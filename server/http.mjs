@@ -93,7 +93,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       return false;
     }
   };
-  const mcp = createMcpHandler(() => createServer({ metrics }), { legacy: 'reject' });
+  const mcp = createMcpHandler(() => createServer({ metrics, env }), { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
