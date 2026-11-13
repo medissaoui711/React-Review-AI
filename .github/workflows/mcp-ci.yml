@@ -81,7 +81,7 @@ jobs:
           });
           const client = new Client(
             { name: 'react-review-ai-ci', version: '1.0.0' },
-            { versionNegotiation: { mode: 'auto' } },
+            { versionNegotiation: { mode: { pin: '2026-07-28' } } },
           );
 
           try {
@@ -172,7 +172,7 @@ jobs:
           );
           const client = new Client(
             { name: 'react-review-ai-http-ci', version: '1.0.0' },
-            { versionNegotiation: { mode: 'auto' } },
+            { versionNegotiation: { mode: { pin: '2026-07-28' } } },
           );
 
           try {
