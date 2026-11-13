@@ -15,48 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
-      - name: Bootstrap source tree from verified archive
+      - name: Resolve canonical repository source tree
         id: source
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode react-review-ai-source-0.3.0.tar.gz.base64 > /tmp/react-review-ai.outer.gz
-          gzip --decompress --stdout /tmp/react-review-ai.outer.gz > /tmp/react-review-ai.tar.gz
-          tar -tzf /tmp/react-review-ai.tar.gz
-          mkdir -p /tmp/react-review-ai
-          tar -xzf /tmp/react-review-ai.tar.gz -C /tmp/react-review-ai
-          ARCHIVE_ROOT="$(find /tmp/react-review-ai -mindepth 1 -maxdepth 1 -type d -print -quit)"
-          if [ ! -f "$GITHUB_WORKSPACE/package.json" ]; then
-            cp -a "$ARCHIVE_ROOT"/. "$GITHUB_WORKSPACE"/
-            cat > "$GITHUB_WORKSPACE/README.md" <<'EOF'
-          # React Review AI
-
-          Read-only React code review MCP server and ChatGPT plugin source.
-
-          ## Requirements
-          - Node.js 22+
-          - npm
-
-          ## Install and run
-          Set REACT_REVIEW_ROOT to the absolute path of the React project to review, then run:
-          ```bash
-          npm ci
-          REACT_REVIEW_ROOT=/absolute/path/to/project npm start
-          ```
-
-          ## MCP tools
-          - `review_project`
-          - `review_component`
-          - `run_test_audit`
-          - `audit_accessibility`
-
-          The project root is trusted server configuration, not a tool argument. The server performs static, read-only analysis and does not execute project code or tests.
-          EOF
-          fi
           PACKAGE_DIR="$GITHUB_WORKSPACE"
           SERVER_ENTRY="$PACKAGE_DIR/server/index.mjs"
           test -f "$PACKAGE_DIR/package.json"
@@ -228,15 +195,15 @@ jobs:
 
   publish-generated-files:
     needs: mcp-stdio-smoke
-    if: success() && github.event_name == 'push'
+    if: success() && github.event_name == 'push' && github.ref_name != 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref_name }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 22
       - name: Generate reproducible dependency lock
