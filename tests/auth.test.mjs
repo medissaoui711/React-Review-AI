@@ -446,6 +446,46 @@ test('HTTP endpoint exposes resource metadata and permits unauthenticated MCP di
     assert.equal(browserToolCall.status, 401);
     assert.match(browserToolCall.headers.get('www-authenticate') || '', /resource_metadata=/);
 
+    const invalidBrowserToken = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://client.example.test',
+        authorization: 'Bearer invalid-token',
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/call',
+        params: { name: 'review_project', arguments: {} }
+      })
+    });
+    assert.equal(invalidBrowserToken.status, 401);
+    assert.match(invalidBrowserToken.headers.get('www-authenticate') || '', /invalid_token/);
+
+    const insufficientBrowserToken = await tokenFor(privateKey, {
+      audience: 'http://127.0.0.1:3000/mcp',
+      claims: { scope: 'profile:read' }
+    });
+    const insufficientBrowserCall = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://client.example.test',
+        authorization: `Bearer ${insufficientBrowserToken}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'tools/call',
+        params: { name: 'review_project', arguments: {} }
+      })
+    });
+    assert.equal(insufficientBrowserCall.status, 403);
+    assert.match(insufficientBrowserCall.headers.get('www-authenticate') || '', /insufficient_scope/);
+
     const unauthenticated = await fetch(`${base}/mcp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
