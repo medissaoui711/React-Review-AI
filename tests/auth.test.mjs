@@ -215,7 +215,7 @@ test('request body limit rejects oversized declared and streamed bodies', async 
 });
 
 test('HTTP endpoint exposes guarded resource metadata and challenges unauthenticated MCP calls', async () => {
-  const { jwks } = await makeKeys();
+  const { jwks, privateKey } = await makeKeys();
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-oauth-http-'));
   const root = path.join(parent, 'project');
   await mkdir(root, { recursive: true });
@@ -261,7 +261,6 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
     const previousRoot = process.env.REACT_REVIEW_ROOT;
     process.env.REACT_REVIEW_ROOT = root;
     try {
-      const { privateKey } = await makeKeys();
       const validToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
       const initialized = await fetch(`${base}/mcp`, {
         method: 'POST',
