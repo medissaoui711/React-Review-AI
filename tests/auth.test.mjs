@@ -258,6 +258,37 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
     assert.equal(unauthenticated.status, 401);
     assert.match(unauthenticated.headers.get('www-authenticate') || '', /resource_metadata=/);
 
+    const previousRoot = process.env.REACT_REVIEW_ROOT;
+    process.env.REACT_REVIEW_ROOT = root;
+    try {
+      const { privateKey } = await makeKeys();
+      const validToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
+      const initialized = await fetch(`${base}/mcp`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${validToken}`,
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2026-07-28',
+            capabilities: {},
+            clientInfo: { name: 'phase-3-5-auth-test', version: '1.0.0' }
+          }
+        })
+      });
+      const initializedBody = await initialized.text();
+      assert.equal(initialized.status, 200, initializedBody);
+      assert.match(initializedBody, /serverInfo/);
+    } finally {
+      if (previousRoot === undefined) delete process.env.REACT_REVIEW_ROOT;
+      else process.env.REACT_REVIEW_ROOT = previousRoot;
+    }
+
     const metadataPost = await fetch(`${base}/.well-known/oauth-protected-resource`, {
       method: 'POST'
     });
