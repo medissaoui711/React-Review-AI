@@ -20,7 +20,8 @@
 
 | External gate | Status |
 |---|---|
-| GitHub Dependency Graph / Dependency Review | BLOCKED — PR #6 confirms the repository Dependency Graph is disabled; owner must enable it |\n| Live HTTPS deployment and reverse-proxy validation | BLOCKED — no deployment endpoint supplied |
+| GitHub Dependency Graph / Dependency Review | BLOCKED — PR #6 confirms the repository Dependency Graph is disabled; owner must enable it |
+| Live HTTPS deployment and reverse-proxy validation | BLOCKED — no deployment endpoint supplied |
 | Real OAuth/OIDC provider validation | BLOCKED — no provider tenant/credentials supplied |
 | Actual ChatGPT connection and tool invocation | BLOCKED — requires reachable deployment and provider |
 | MCP Inspector modern-protocol interoperability | NOT TESTED — previously documented negotiation limitation remains open |
