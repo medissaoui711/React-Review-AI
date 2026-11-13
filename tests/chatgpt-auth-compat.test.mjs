@@ -159,7 +159,7 @@ test('valid JWT without the required scope returns an insufficient-scope tool ch
   });
 });
 
-test('invalid bearer token does not block initialize or tools/list but produces an invalid-token tool challenge', { timeout: 60000 }, async () => {
+test('invalid bearer token does not block server discovery or tools/list but produces an invalid-token tool challenge', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint }) => {
     const client = await connectClient(endpoint, 'not-a-valid-jwt');
     try {
