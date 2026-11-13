@@ -1,24 +1,24 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { analyzeSource, summarizeFindings } from './analysis-engine.mjs';
 
 const ignored = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.turbo']);
-const extensions = new Set(['.js', '.jsx', '.ts', '.tsx']);
-const maxFiles = 2500;
-const maxBytes = 500000;
+const extensions = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts']);
+const LIMITS = Object.freeze({
+  maxFiles: 2500,
+  maxFileBytes: 500_000,
+  maxTotalBytes: 20_000_000,
+  maxDurationMs: 10_000,
+  maxFindings: 5000
+});
 
 function assertInside(root, candidate, message = 'Path is outside project root.') {
-  if (candidate !== root && !candidate.startsWith(root + path.sep)) {
-    throw new Error(message);
-  }
+  if (candidate !== root && !candidate.startsWith(root + path.sep)) throw new Error(message);
 }
 
 async function resolveSafe(root, relativePath) {
-  if (typeof relativePath !== 'string' || relativePath.trim().length === 0) {
-    throw new Error('A non-empty project-relative file path is required.');
-  }
-  if (path.isAbsolute(relativePath)) {
-    throw new Error('Absolute file paths are not allowed; use a path relative to the configured project root.');
-  }
+  if (typeof relativePath !== 'string' || relativePath.trim().length === 0) throw new Error('A non-empty project-relative file path is required.');
+  if (path.isAbsolute(relativePath)) throw new Error('Absolute file paths are not allowed; use a path relative to the configured project root.');
   const candidate = path.resolve(root, relativePath);
   assertInside(root, candidate);
   const realCandidate = await fs.realpath(candidate);
@@ -28,201 +28,176 @@ async function resolveSafe(root, relativePath) {
   return realCandidate;
 }
 
-async function readFileLimited(file) {
+async function readLimited(file, remainingBytes = LIMITS.maxFileBytes) {
   try {
     const stat = await fs.stat(file);
-    if (!stat.isFile() || stat.size > maxBytes) return null;
+    if (!stat.isFile() || stat.size > LIMITS.maxFileBytes || stat.size > remainingBytes) return null;
     return await fs.readFile(file, 'utf8');
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function readRelativeFile(root, relativePath) {
-  try {
-    const file = await resolveSafe(root, relativePath);
-    return await readFileLimited(file);
-  } catch {
-    return null;
-  }
+  try { return await readLimited(await resolveSafe(root, relativePath)); }
+  catch { return null; }
 }
 
-async function walk(root, dir = root, out = []) {
-  if (out.length >= maxFiles) return out;
-
-  // Re-check each directory's canonical location before traversing it.
-  let realDir;
-  try {
-    realDir = await fs.realpath(dir);
-    assertInside(root, realDir, 'Resolved directory is outside project root.');
-  } catch {
-    return out;
-  }
-
-  let entries;
-  try {
-    entries = await fs.readdir(realDir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
-
-  for (const entry of entries) {
-    if (out.length >= maxFiles) break;
-    if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
-    const target = path.join(realDir, entry.name);
-    if (entry.isDirectory()) {
-      await walk(root, target, out);
-    } else if (entry.isFile()) {
-      // Only retain canonical regular files inside the configured root.
-      try {
-        const realTarget = await fs.realpath(target);
-        assertInside(root, realTarget, 'Resolved file is outside project root.');
-        const stat = await fs.stat(realTarget);
-        if (stat.isFile()) out.push(realTarget);
-      } catch {
-        // Ignore inaccessible, replaced, or out-of-root entries.
+async function walk(root, budget) {
+  const out = [];
+  const visit = async dir => {
+    if (out.length >= LIMITS.maxFiles || Date.now() - budget.startedAt >= LIMITS.maxDurationMs) return;
+    let realDir;
+    try {
+      realDir = await fs.realpath(dir);
+      assertInside(root, realDir);
+    } catch { return; }
+    let entries;
+    try { entries = await fs.readdir(realDir, { withFileTypes: true }); }
+    catch { return; }
+    for (const entry of entries) {
+      if (out.length >= LIMITS.maxFiles || Date.now() - budget.startedAt >= LIMITS.maxDurationMs) break;
+      if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
+      const target = path.join(realDir, entry.name);
+      if (entry.isDirectory()) await visit(target);
+      else if (entry.isFile()) {
+        try {
+          const realTarget = await fs.realpath(target);
+          assertInside(root, realTarget);
+          const stat = await fs.stat(realTarget);
+          if (stat.isFile()) out.push({ file: realTarget, size: stat.size });
+        } catch { /* Ignore inaccessible and out-of-root entries. */ }
       }
     }
-  }
+  };
+  await visit(root);
   return out;
 }
 
-function inspect(file, source, sequenceStart = 0) {
-  const findings = [];
-  const add = (line, severity, category, evidence, explanation, recommendation, verification) => {
-    findings.push({
-      id: `RRA-${String(sequenceStart + findings.length + 1).padStart(4, '0')}`,
-      severity, category, file, line,
-      evidence: evidence.trim().slice(0, 220), explanation, recommendation, verification,
-      confidence: 'heuristic'
-    });
+function inventoryMetadata(all, sourceFiles) {
+  return {
+    scanned_file_count: all.length,
+    source_file_count: sourceFiles.length,
+    limits: { ...LIMITS }
   };
-  source.split(/\r?\n/).forEach((line, index) => {
-    const number = index + 1;
-    if (/dangerouslySetInnerHTML/.test(line)) add(number, 'High', 'Security', line,
-      'Raw HTML insertion can create XSS risk if content is untrusted or unsanitized.',
-      'Avoid raw HTML or sanitize through a maintained sanitizer at a clear trust boundary.',
-      'Trace data sources and test malicious payloads in an isolated test environment.');
-    if (/<img\b/.test(line) && !/\balt\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
-      'Image may lack an alternative text decision.',
-      'Add meaningful alt text, or alt="" for decorative images.',
-      'Inspect the rendered accessibility tree and test with assistive technology.');
-    if (/<(div|span)\b[^>]*onClick\s*=/.test(line) && !/\b(role|tabIndex)\s*=/.test(line)) add(number, 'Medium', 'Accessibility', line,
-      'Clickable non-semantic element may not support keyboard interaction or expose control semantics.',
-      'Prefer a native button or link; otherwise implement complete semantics, focus, and keyboard behavior.',
-      'Test keyboard-only operation and inspect the accessibility tree.');
-    if (/console\.(log|debug)\s*\(/.test(line)) add(number, 'Low', 'Maintainability', line,
-      'Debug logging may expose data or create noisy production output.',
-      'Remove temporary logs or use an approved logging policy.',
-      'Inspect production build and logging policy.');
-    if (/\bany\b/.test(line) && /\.(ts|tsx)$/.test(file)) add(number, 'Low', 'TypeScript', line,
-      'The any type disables useful static checks here.',
-      'Prefer a precise type, unknown with narrowing, or a generic constraint.',
-      'Run TypeScript typechecking and inspect the narrowed type.');
-  });
-  return findings;
 }
 
-async function sourceFiles(root) {
-  const all = await walk(root);
-  return { all, files: all.filter(file => extensions.has(path.extname(file))) };
-}
-
-/**
- * Creates a review service bound to one canonical project root.
- * The root is supplied by trusted server configuration, never by a tool caller.
- */
 export async function createReviewService(configuredRoot) {
-  if (typeof configuredRoot !== 'string' || configuredRoot.trim().length === 0) {
-    throw new Error('REACT_REVIEW_ROOT must be set to an absolute project directory before the server starts.');
-  }
-  if (!path.isAbsolute(configuredRoot)) {
-    throw new Error('REACT_REVIEW_ROOT must be an absolute path.');
-  }
-
+  if (typeof configuredRoot !== 'string' || !configuredRoot.trim()) throw new Error('REACT_REVIEW_ROOT must be set to an absolute project directory before the server starts.');
+  if (!path.isAbsolute(configuredRoot)) throw new Error('REACT_REVIEW_ROOT must be an absolute path.');
   let root;
-  try {
-    root = await fs.realpath(configuredRoot);
-  } catch {
-    throw new Error('REACT_REVIEW_ROOT must point to an existing accessible directory.');
-  }
-  const rootStat = await fs.stat(root);
-  if (!rootStat.isDirectory()) {
-    throw new Error('REACT_REVIEW_ROOT must point to a directory.');
+  try { root = await fs.realpath(configuredRoot); }
+  catch { throw new Error('REACT_REVIEW_ROOT must point to an existing accessible directory.'); }
+  if (!(await fs.stat(root)).isDirectory()) throw new Error('REACT_REVIEW_ROOT must point to a directory.');
+
+  async function collectSource() {
+    const budget = { startedAt: Date.now(), bytesRead: 0, truncated: false, timedOut: false };
+    const all = await walk(root, budget);
+    const source = all.filter(item => extensions.has(path.extname(item.file).toLowerCase()));
+    const findings = [];
+    const parseErrors = [];
+    const skipped = [];
+    for (const item of source) {
+      if (Date.now() - budget.startedAt >= LIMITS.maxDurationMs) { budget.timedOut = true; break; }
+      if (budget.bytesRead + item.size > LIMITS.maxTotalBytes) { budget.truncated = true; break; }
+      if (item.size > LIMITS.maxFileBytes) { skipped.push({ file: path.relative(root, item.file), reason: 'file_exceeds_limit' }); continue; }
+      const relative = path.relative(root, item.file);
+      const content = await readLimited(item.file, LIMITS.maxTotalBytes - budget.bytesRead);
+      if (content === null) { skipped.push({ file: relative, reason: 'unreadable_or_changed_during_scan' }); continue; }
+      budget.bytesRead += Buffer.byteLength(content, 'utf8');
+      const result = analyzeSource(relative, content);
+      findings.push(...result.findings);
+      if (result.parse_error) parseErrors.push({ file: relative, ...result.parse_error });
+      if (result.skipped_reason) skipped.push({ file: relative, reason: result.skipped_reason });
+      if (findings.length >= LIMITS.maxFindings) { findings.length = LIMITS.maxFindings; budget.truncated = true; break; }
+    }
+    findings.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.rule_id.localeCompare(b.rule_id));
+    return { all, source, findings, parseErrors, skipped, budget };
   }
 
   async function reviewProject() {
-    const { all, files } = await sourceFiles(root);
-    const findings = [];
-    for (const file of files) {
-      const relative = path.relative(root, file);
-      const content = await readRelativeFile(root, relative);
-      if (content !== null) findings.push(...inspect(relative, content, findings.length));
-    }
+    const result = await collectSource();
     let dependencies = {};
     const packageContent = await readRelativeFile(root, 'package.json');
-    try {
-      const pkg = JSON.parse(packageContent || '{}');
-      dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
-    } catch {}
+    try { const pkg = JSON.parse(packageContent || '{}'); dependencies = { ...pkg.dependencies, ...pkg.devDependencies }; } catch {}
     return {
-      product: 'React Review AI', mode: 'read-only static heuristic review',
+      product: 'React Review AI',
+      mode: 'read-only AST-based static analysis',
       project_scope: 'configured trusted project root',
-      scanned_file_count: all.length, source_file_count: files.length,
+      ...inventoryMetadata(result.all, result.source),
       detected: {
-        react: Boolean(dependencies.react), typescript: Boolean(dependencies.typescript),
+        react: Boolean(dependencies.react),
+        typescript: Boolean(dependencies.typescript || dependencies['@types/react']),
         test_tools: ['vitest', 'jest', '@testing-library/react'].filter(name => Boolean(dependencies[name]))
       },
-      findings,
+      summary: summarizeFindings(result.findings),
+      findings: result.findings,
+      parse_errors: result.parseErrors,
+      skipped_files: result.skipped,
+      execution: {
+        bytes_read: result.budget.bytesRead,
+        truncated: result.budget.truncated,
+        timed_out: result.budget.timedOut,
+        duration_ms: Date.now() - result.budget.startedAt
+      },
       limitations: [
-        'No source code executed.', 'No tests run and no actual coverage measured.',
-        'Findings are heuristic and require validation.', 'No browser, axe-core, or screen-reader audit performed.'
+        'No source code or project scripts executed.',
+        'No tests run and no actual coverage measured.',
+        'AST findings are rule-based signals and require human validation.',
+        'No browser, axe-core, or screen-reader audit performed.'
       ]
     };
   }
 
   async function reviewFile(relativePath) {
     const file = await resolveSafe(root, relativePath);
-    const content = await readFileLimited(file);
+    const content = await readLimited(file);
     if (content === null) throw new Error('File unavailable, too large, or not a regular text file.');
-    return { file: path.relative(root, file), mode: 'read-only heuristic', findings: inspect(path.relative(root, file), content) };
+    const relative = path.relative(root, file);
+    const result = analyzeSource(relative, content);
+    return {
+      file: relative,
+      mode: 'read-only AST-based static analysis',
+      summary: summarizeFindings(result.findings),
+      findings: result.findings,
+      parse_error: result.parse_error,
+      skipped_reason: result.skipped_reason
+    };
   }
 
   async function testAudit() {
-    const all = await walk(root);
-    const tests = all.filter(file => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file));
-    const configs = all.filter(file => /(vitest|jest|playwright|cypress)/i.test(path.basename(file)));
+    const budget = { startedAt: Date.now() };
+    const all = await walk(root, budget);
+    const tests = all.filter(item => /\.(test|spec)\.[cm]?[jt]sx?$/i.test(item.file));
+    const configs = all.filter(item => /(vitest|jest|playwright|cypress)/i.test(path.basename(item.file)));
     let pkg = {};
-    try {
-      pkg = JSON.parse((await readRelativeFile(root, 'package.json')) || '{}');
-    } catch {}
+    try { pkg = JSON.parse((await readRelativeFile(root, 'package.json')) || '{}'); } catch {}
     const dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
     return {
-      mode: 'test inventory only', test_file_count: tests.length,
-      test_files: tests.slice(0, 250).map(file => path.relative(root, file)),
-      related_config_files: configs.slice(0, 100).map(file => path.relative(root, file)),
+      mode: 'test inventory only',
+      test_file_count: tests.length,
+      test_files: tests.slice(0, 250).map(item => path.relative(root, item.file)),
+      related_config_files: configs.slice(0, 100).map(item => path.relative(root, item.file)),
       detected_frameworks: ['vitest', 'jest', '@testing-library/react', '@playwright/test', 'cypress'].filter(name => Boolean(dependencies[name])),
       test_scripts: Object.fromEntries(Object.entries(pkg.scripts || {}).filter(([name]) => /test|coverage|e2e/i.test(name))),
+      inventory_truncated: all.length >= LIMITS.maxFiles || Date.now() - budget.startedAt >= LIMITS.maxDurationMs,
       note: 'No tests executed; no real coverage percentage inferred.'
     };
   }
 
   async function accessibilityAudit() {
-    const { files } = await sourceFiles(root);
-    const findings = [];
-    let sequenceCursor = 0;
-    for (const file of files) {
-      const relative = path.relative(root, file);
-      const content = await readRelativeFile(root, relative);
-      if (content !== null) {
-        const allMatches = inspect(relative, content, sequenceCursor);
-        sequenceCursor += allMatches.length;
-        findings.push(...allMatches.filter(item => item.category === 'Accessibility'));
-      }
-    }
+    const result = await collectSource();
+    const findings = result.findings.filter(item => item.category === 'Accessibility');
     return {
-      standard_target: 'WCAG 2.2 AA', mode: 'heuristic static JSX/TSX inspection',
-      scanned_source_files: files.length, findings,
+      standard_target: 'WCAG 2.2 AA',
+      mode: 'AST-based static JSX accessibility heuristics',
+      scanned_source_files: result.source.length,
+      summary: summarizeFindings(findings),
+      findings,
+      parse_errors: result.parseErrors,
+      execution: {
+        bytes_read: result.budget.bytesRead,
+        truncated: result.budget.truncated,
+        timed_out: result.budget.timedOut
+      },
       limitations: [
         'Not a WCAG conformance assessment.',
         'Contrast, focus order, dynamic states, and live regions need rendered-page testing.',
