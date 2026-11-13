@@ -87,7 +87,7 @@ export function createHttpServer(env = process.env) {
       const rateLimitResponse = rateLimit(request);
       if (rateLimitResponse) return rateLimitResponse;
 
-      const boundedRequest = enforceRequestBodyLimit(request);
+      const boundedRequest = await enforceRequestBodyLimit(request);
       if (boundedRequest instanceof Response) return boundedRequest;
       const safeRequest = boundedRequest || request;
 
