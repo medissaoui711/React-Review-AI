@@ -112,7 +112,7 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
 
   const keySet = jwks ?? createRemoteJWKSet(config.jwksUrl, {
     timeoutDuration: 5_000,
-    cooldownDuration: 30_000,
+    cooldownDuration: 5_000,
     cacheMaxAge: 300_000
   });
   const verifier = createJwtTokenVerifier({
