@@ -151,8 +151,9 @@ The static Pages dashboard now contains an MCP browser client based on the offic
 
 - `VITE_MCP_ENDPOINT`: exact public HTTPS MCP endpoint ending in `/mcp`. HTTP is accepted only for local loopback development.
 - `VITE_OAUTH_CLIENT_ID`: public client identifier for the pre-registered Auth0 Single Page Application. This value is not a secret. Never define a `VITE_*_CLIENT_SECRET`.
+- `VITE_OAUTH_ISSUER`: exact canonical HTTPS issuer URL from Auth0 discovery (including its trailing slash where present). The browser provider refuses to send the client ID to any issuer that does not exactly match this value.
 
-These values are build-time frontend configuration. They are not automatically inferred from Worker settings. The Pages build must be configured separately by the account owner; no Cloudflare project settings were changed by Phase 3.8.
+These values are build-time frontend configuration. They are not automatically inferred from Worker settings. The Pages build must be configured separately by the account owner; no Cloudflare project settings were changed by Phase 3.8. The issuer must match the Worker's `OAUTH_ISSUER_URL` exactly.
 
 ### Auth0 public-client setup
 
