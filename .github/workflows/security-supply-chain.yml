@@ -81,28 +81,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           npm sbom --sbom-format=cyclonedx > artifacts/sbom.cdx.json
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const packages = Object.entries(lock.packages || {})
-            .filter(([path]) => path.startsWith('node_modules/'))
-            .map(([path, item]) => ({
-              package: item.name || path.slice('node_modules/'.length),
-              version: item.version || null,
-              license: item.license || 'UNKNOWN',
-              path
-            }))
-            .sort((a, b) => a.package.localeCompare(b.package) || String(a.version).localeCompare(String(b.version)));
-          const inventory = {
-            generated_at: new Date().toISOString(),
-            source: 'package-lock.json',
-            package_count: packages.length,
-            unknown_license_count: packages.filter(item => item.license === 'UNKNOWN').length,
-            packages
-          };
-          fs.writeFileSync('artifacts/license-inventory.json', JSON.stringify(inventory, null, 2) + '\n');
-          console.log('Inventoried ' + packages.length + ' locked packages; ' + inventory.unknown_license_count + ' have no declared license metadata.');
-          NODE
+          node scripts/generate-license-inventory.mjs
       - name: Upload SBOM and license inventory
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
