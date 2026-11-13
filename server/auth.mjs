@@ -167,28 +167,41 @@ export function createRequestRateLimiter({ windowMs = 60_000, maxRequests = 120,
   };
 }
 
-export function enforceRequestBodyLimit(request, maxBytes = 1_048_576) {
+export async function enforceRequestBodyLimit(request, maxBytes = 1_048_576) {
   const length = request.headers.get('content-length');
-  if (length && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
+  if (length && (!/^\\d+$/.test(length) || Number(length) > maxBytes)) {
     return new Response('Payload Too Large', { status: 413 });
   }
-  if (!request.body) return null;
+  if (!request.body) return request;
 
+  const reader = request.body.getReader();
+  const chunks = [];
   let received = 0;
-  const limitedBody = request.body.pipeThrough(new TransformStream({
-    transform(chunk, controller) {
-      received += chunk.byteLength;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
       if (received > maxBytes) {
-        controller.error(new Error('Request body exceeds the configured limit.'));
-        return;
+        await reader.cancel();
+        return new Response('Payload Too Large', { status: 413 });
       }
-      controller.enqueue(chunk);
+      chunks.push(value);
     }
-  }));
+  } catch {
+    return new Response('Bad Request', { status: 400 });
+  }
+
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   return new Request(request.url, {
     method: request.method,
     headers: request.headers,
-    body: limitedBody,
+    body,
     signal: request.signal,
     duplex: 'half'
   });
