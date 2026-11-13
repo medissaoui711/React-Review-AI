@@ -187,7 +187,7 @@ test('browser OAuth provider preserves only short-lived PKCE state across redire
   };
 
   runInNewContext(
-    main.slice(start, end) + '\\nglobalThis.__BrowserOAuthProvider = BrowserOAuthProvider;',
+    main.slice(start, end) + '\nglobalThis.__BrowserOAuthProvider = BrowserOAuthProvider;',
     context,
   );
 
