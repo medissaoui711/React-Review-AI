@@ -81,7 +81,7 @@ function inventoryMetadata(all, sourceFiles) {
   };
 }
 
-export async function createReviewService(configuredRoot) {
+export async function createReviewService(configuredRoot, { metrics } = {}) {
   if (typeof configuredRoot !== 'string' || !configuredRoot.trim()) throw new Error('REACT_REVIEW_ROOT must be set to an absolute project directory before the server starts.');
   if (!path.isAbsolute(configuredRoot)) throw new Error('REACT_REVIEW_ROOT must be an absolute path.');
   let root;
@@ -134,6 +134,14 @@ export async function createReviewService(configuredRoot) {
       }
 
       findings.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0) || a.rule_id.localeCompare(b.rule_id));
+      metrics?.recordAnalysis?.({
+        durationMs: Date.now() - budget.startedAt,
+        parseErrors: parseErrors.length,
+        timedOut: budget.timedOut,
+        truncated: budget.truncated,
+        findings: findings.length,
+        bytesRead: budget.bytesRead
+      });
       return { all, source, findings, parseErrors, skipped, budget };
     } finally {
       await runner.close();
@@ -179,6 +187,7 @@ export async function createReviewService(configuredRoot) {
     const content = await readLimited(file);
     if (content === null) throw new Error('File unavailable, too large, or not a regular text file.');
     const relative = path.relative(root, file);
+    const startedAt = Date.now();
     const runner = createAnalysisRunner();
     let result;
     try {
@@ -188,6 +197,14 @@ export async function createReviewService(configuredRoot) {
     } finally {
       await runner.close();
     }
+    metrics?.recordAnalysis?.({
+      durationMs: Date.now() - startedAt,
+      parseErrors: result.parse_error ? 1 : 0,
+      timedOut: Boolean(result.timed_out),
+      truncated: ['analysis_timeout', 'analysis_worker_error', 'source_exceeds_parser_limit'].includes(result.skipped_reason),
+      findings: result.findings.length,
+      bytesRead: Buffer.byteLength(content, 'utf8')
+    });
     return {
       file: relative,
       mode: 'read-only AST analysis in an isolated worker',
