@@ -176,10 +176,40 @@ app.innerHTML = `
         <p class="integration-note">Browser integration uses the official MCP client with Authorization Code + PKCE. Access and refresh tokens stay in memory; only the one-time PKCE verifier, OAuth state, and discovery metadata survive the redirect in session-scoped storage. The server must explicitly allow this Pages origin, and the Auth0 public client must list this exact callback URL.</p>
       </section>
 
-      <section class="workflow" id="workflow">
-        <div class="workflow-icon" aria-hidden="true">⌘</div>
-        <div><div class="eyebrow">BUILT FOR DEVELOPERS</div><h2>Insights that keep you in control.</h2><p>React Review AI performs read-only static analysis. It does not modify project files, execute your application, or claim that heuristic checks are a full WCAG certification.</p></div>
-        <div class="workflow-badge">READ ONLY <span>✓</span></div>
+      <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <div><div class="eyebrow">FROM CONFIGURATION TO INSIGHT</div><h2 id="workflow-title">Your review workflow</h2><p>Follow each stage from endpoint setup to a completed, read-only review.</p></div>
+          <span class="count">5 STEPS</span>
+        </div>
+        <ol class="workflow-steps" aria-label="MCP review workflow">
+          <li class="workflow-step" data-workflow-step="configure" data-status="pending">
+            <span class="workflow-step-number" aria-hidden="true">01</span>
+            <div class="workflow-step-copy"><h3>Configure</h3><p data-step-detail>Validate the HTTPS MCP endpoint and browser OAuth settings.</p></div>
+            <span class="workflow-step-status" data-step-status>Pending</span>
+          </li>
+          <li class="workflow-step" data-workflow-step="connect" data-status="pending">
+            <span class="workflow-step-number" aria-hidden="true">02</span>
+            <div class="workflow-step-copy"><h3>Connect</h3><p data-step-detail>Authorize the browser session using OAuth Authorization Code + PKCE.</p></div>
+            <span class="workflow-step-status" data-step-status>Pending</span>
+          </li>
+          <li class="workflow-step" data-workflow-step="discover" data-status="pending">
+            <span class="workflow-step-number" aria-hidden="true">03</span>
+            <div class="workflow-step-copy"><h3>Discover tools</h3><p data-step-detail>Confirm that all four required read-only MCP tools are available.</p></div>
+            <span class="workflow-step-status" data-step-status>Pending</span>
+          </li>
+          <li class="workflow-step" data-workflow-step="analyze" data-status="pending">
+            <span class="workflow-step-number" aria-hidden="true">04</span>
+            <div class="workflow-step-copy"><h3>Analyze</h3><p data-step-detail>Choose a review tool and submit a read-only analysis request.</p></div>
+            <span class="workflow-step-status" data-step-status>Pending</span>
+          </li>
+          <li class="workflow-step" data-workflow-step="results" data-status="pending">
+            <span class="workflow-step-number" aria-hidden="true">05</span>
+            <div class="workflow-step-copy"><h3>Review results</h3><p data-step-detail>Inspect findings and recommendations returned by the MCP server.</p></div>
+            <span class="workflow-step-status" data-step-status>Pending</span>
+          </li>
+        </ol>
+        <p class="workflow-footnote" role="status" aria-live="polite" id="workflow-live-status">The workflow reflects verified browser-side progress. Backend availability is not assumed.</p>
+        <div class="workflow-safety-note"><span aria-hidden="true">✓</span> READ-ONLY BY DESIGN <span>Analysis does not modify project files or execute the reviewed application. Accessibility findings are heuristic, not a full WCAG certification.</span></div>
       </section>
 
       <footer><span>© 2026 React Review AI</span><span>Built for thoughtful code reviews.</span></footer>
@@ -345,6 +375,48 @@ class BrowserOAuthProvider {
 let mcpClient;
 let mcpTransport;
 let oauthProvider;
+let discoveredRequiredTools = false;
+
+const workflowStatuses = {
+  configure: mcpConfiguration.state === "configured" ? "complete" : "blocked",
+  connect: "pending",
+  discover: "pending",
+  analyze: "pending",
+  results: "pending",
+};
+
+function setWorkflowStep(name, status, detail) {
+  workflowStatuses[name] = status;
+  const step = document.querySelector(`[data-workflow-step="${name}"]`);
+  if (!step) return;
+  step.dataset.status = status;
+  const statusLabel = step.querySelector("[data-step-status]");
+  if (statusLabel) {
+    statusLabel.textContent = ({
+      complete: "Complete",
+      active: "In progress",
+      blocked: "Blocked",
+      pending: "Pending",
+    })[status] || "Pending";
+  }
+  if (detail) {
+    const detailNode = step.querySelector("[data-step-detail]");
+    if (detailNode) detailNode.textContent = detail;
+  }
+  const liveStatus = document.querySelector("#workflow-live-status");
+  if (liveStatus) {
+    const title = step.querySelector("h3")?.textContent || name;
+    liveStatus.textContent = `${title}: ${statusLabel?.textContent || status}.`;
+  }
+}
+
+setWorkflowStep(
+  "configure",
+  mcpConfiguration.state === "configured" ? "complete" : "blocked",
+  mcpConfiguration.state === "configured"
+    ? "MCP endpoint format is valid. OAuth settings and live connectivity still require verification."
+    : "Set a valid HTTPS MCP endpoint ending in /mcp before continuing.",
+);
 
 const connectionCard = document.querySelector(".connection-card");
 const connectionTitle = connectionCard?.querySelector(".connection-copy h3");
@@ -410,6 +482,8 @@ async function finishOAuthCallback(provider) {
 
 async function connectMcp() {
   if (!oauthConfigurationReady) {
+    setWorkflowStep("connect", "blocked", "Configure the endpoint, exact OAuth issuer, and public client ID before connecting.");
+    setWorkflowStep("discover", "pending", "Tool discovery starts only after a successful MCP handshake.");
     setConnectionStatus(
       "OAuth configuration required",
       "Configure the HTTPS MCP endpoint, exact OAuth issuer (VITE_OAUTH_ISSUER), and public client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
@@ -420,6 +494,8 @@ async function connectMcp() {
 
   connectButton.disabled = true;
   let pendingTransport;
+  setWorkflowStep("connect", "active", "Starting the browser OAuth and MCP connection flow.");
+  setWorkflowStep("discover", "active", "Waiting for the MCP handshake before listing tools.");
   setConnectionStatus("Preparing secure connection", "Discovering the protected resource and preparing OAuth Authorization Code + PKCE.", "pending");
   try {
     oauthProvider ??= new BrowserOAuthProvider(oauthClientId, oauthIssuer);
@@ -448,6 +524,9 @@ async function connectMcp() {
     }
     mcpClient = client;
     mcpTransport = pendingTransport;
+    discoveredRequiredTools = true;
+    setWorkflowStep("connect", "complete", "The MCP transport handshake completed successfully.");
+    setWorkflowStep("discover", "complete", "All four required read-only tools were found on the server.");
     runButtons.forEach((button) => {
       button.disabled = !availableTools.has(button.dataset.runTool);
     });
@@ -462,6 +541,8 @@ async function connectMcp() {
     try { await pendingTransport?.close(); } catch {
       // A failed handshake may already have closed the transport.
     }
+    setWorkflowStep("connect", "blocked", "Connection failed. Review the MCP endpoint, OAuth issuer, CORS policy, and server availability.");
+    setWorkflowStep("discover", "pending", "Tool discovery is unavailable until the connection succeeds.");
     setConnectionStatus("Connection could not be completed", error instanceof Error ? error.message : "Unexpected connection error.", "invalid");
     connectButton.disabled = false;
   }
@@ -477,6 +558,11 @@ async function disconnectMcp() {
   mcpClient = undefined;
   mcpTransport = undefined;
   oauthProvider = undefined;
+  discoveredRequiredTools = false;
+  setWorkflowStep("connect", "pending", "Connect the browser session using OAuth Authorization Code + PKCE.");
+  setWorkflowStep("discover", "pending", "Tool discovery runs after the next successful MCP handshake.");
+  setWorkflowStep("analyze", "pending", "Choose a review tool after the required tools are discovered.");
+  setWorkflowStep("results", "pending", "Results appear after a successful tool response.");
   runButtons.forEach((button) => { button.disabled = true; });
   connectButton.textContent = "Connect MCP";
   setConnectionStatus("MCP disconnected", "The browser session is disconnected. Tokens were held in memory only.", "pending");
@@ -501,12 +587,22 @@ async function runMcpTool(name) {
 
   const button = runButtons.find((item) => item.dataset.runTool === name);
   if (button) button.disabled = true;
+  setWorkflowStep("analyze", "active", `Sending the ${name} read-only request to the MCP server.`);
+  setWorkflowStep("results", "pending", "Waiting for a successful analysis response.");
   showToolOutput("Running " + name, "The read-only analysis request is being sent to the MCP server.");
   try {
     const result = await mcpClient.callTool({ name, arguments: args });
     showToolOutput(name + " result", result.structuredContent?.data ?? result);
+    setWorkflowStep("analyze", "complete", `The ${name} request completed and returned a server response.`);
+    setWorkflowStep("results", "complete", "A response is available in the Analysis result panel above.");
   } catch (error) {
-    if (error instanceof UnauthorizedError) return;
+    if (error instanceof UnauthorizedError) {
+      setWorkflowStep("analyze", "blocked", "The server requires valid authorization. Reconnect and authorize the browser session.");
+      setWorkflowStep("results", "pending", "No analysis result was returned.");
+      return;
+    }
+    setWorkflowStep("analyze", "blocked", "The analysis request failed. Check the server response and connection status.");
+    setWorkflowStep("results", "blocked", "No successful result is available to review."); 
     showToolOutput(name + " failed", error instanceof Error ? error.message : "The MCP tool request failed.");
   } finally {
     if (button && mcpClient) button.disabled = false;
