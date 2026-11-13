@@ -46,7 +46,7 @@ function testEnv(overrides = {}) {
   return {
     NODE_ENV: 'test',
     OAUTH_ISSUER_URL: issuer,
-    OAUTH_JWKS_URL: 'http://127.0.0.1:9000/.well-known/jwks.json',
+    OAUTH_JWKS_URL: 'https://identity.example.test/.well-known/jwks.json',
     MCP_PUBLIC_URL: 'http://127.0.0.1:3000/mcp',
     ...overrides
   };
@@ -70,7 +70,7 @@ test('production OAuth issuer and JWKS URLs must use HTTPS', () => {
 test('MCP public resource URL must be canonical /mcp without query parameters', () => {
   assert.throws(() => readAuthConfig(testEnv({
     MCP_PUBLIC_URL: 'http://127.0.0.1:3000/mcp?debug=true'
-  })), /canonical \/mcp endpoint/);
+  }), { allowHttpLoopback: true }), /canonical \/mcp endpoint/);
 });
 
 test('JWT verifier accepts only valid issuer, audience, algorithm, expiry and subject', async () => {
@@ -129,7 +129,7 @@ test('HTTP auth gate challenges missing tokens and rejects insufficient scopes',
   assert.equal(missing.status, 401);
   assert.match(missing.headers.get('www-authenticate') || '', /resource_metadata=/);
 
-  const insufficientToken = await tokenFor(privateKey, { claims: { scope: 'profile:read' } });
+  const insufficientToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp', claims: { scope: 'profile:read' } });
   const denied = await oauth.authenticate(new Request('http://127.0.0.1:3000/mcp', {
     method: 'POST',
     headers: { authorization: `Bearer ${insufficientToken}` }
@@ -141,7 +141,7 @@ test('HTTP auth gate challenges missing tokens and rejects insufficient scopes',
 test('HTTP auth gate returns verified identity for the required scope', async () => {
   const { privateKey, jwks } = await makeKeys();
   const oauth = createOAuthRuntime(testEnv(), { jwks });
-  const token = await tokenFor(privateKey);
+  const token = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
   const authInfo = await oauth.authenticate(new Request('http://127.0.0.1:3000/mcp', {
     method: 'POST',
     headers: { authorization: `Bearer ${token}` }
