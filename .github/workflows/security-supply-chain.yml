@@ -101,7 +101,7 @@ jobs:
             packages
           };
           fs.writeFileSync('artifacts/license-inventory.json', JSON.stringify(inventory, null, 2) + '\n');
-          console.log(\`Inventoried ${packages.length} locked packages; ${inventory.unknown_license_count} have no declared license metadata.\`);
+          console.log('Inventoried ' + packages.length + ' locked packages; ' + inventory.unknown_license_count + ' have no declared license metadata.');
           NODE
       - name: Upload SBOM and license inventory
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
