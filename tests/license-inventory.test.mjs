@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { buildLicenseInventory } from '../scripts/generate-license-inventory.mjs';
 
-test('license inventory is deterministic apart from its generation timestamp', () => {
+test('license inventory is deterministic and marks missing licenses unknown', () => {
   const lock = {
     packages: {
       '': { name: 'react-review-ai-mcp-server', version: '0.6.0' },
@@ -15,7 +15,7 @@ test('license inventory is deterministic apart from its generation timestamp', (
   const first = buildLicenseInventory(lock);
   const second = buildLicenseInventory(lock);
 
-  assert.deepEqual(first.packages, second.packages);
+  assert.deepEqual(first, second);
   assert.deepEqual(first.packages.map(item => item.package), ['@scope/alpha', 'unknown', 'zeta']);
   assert.equal(first.package_count, 3);
   assert.equal(first.unknown_license_count, 1);
