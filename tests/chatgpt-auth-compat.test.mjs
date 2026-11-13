@@ -23,7 +23,15 @@ async function createTestIdentity() {
     .setIssuedAt()
     .setExpirationTime('5m')
     .sign(privateKey);
-  return { jwks, token };
+  const insufficientToken = await new SignJWT({ scope: 'profile:read' })
+    .setProtectedHeader({ alg: 'RS256', kid: 'phase-3-6-key' })
+    .setIssuer(issuer)
+    .setSubject('phase-3-6-user')
+    .setAudience(resource)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  return { jwks, token, insufficientToken };
 }
 
 async function withOAuthServer(run) {
@@ -128,6 +136,23 @@ test('valid provider-neutral OAuth access token authorizes all four read-only to
         assert.notEqual(result.isError, true, `${name} must accept the verified token`);
         assert.ok(result.structuredContent || result.content?.length);
       }
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+test('valid JWT without the required scope returns an insufficient-scope tool challenge', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, insufficientToken }) => {
+    const client = await connectClient(endpoint, insufficientToken);
+    try {
+      const listed = await client.listTools();
+      assert.equal(listed.tools.length, 4);
+      const result = await client.callTool({ name: 'review_project', arguments: {} });
+      assert.equal(result.isError, true);
+      const challenge = result._meta?.['mcp/www_authenticate']?.[0] || '';
+      assert.match(challenge, /error="insufficient_scope"/);
+      assert.match(challenge, /error_description=/);
     } finally {
       await client.close();
     }
