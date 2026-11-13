@@ -5,7 +5,7 @@ import test from 'node:test';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createJwtTokenVerifier } from '../server/auth.mjs';
 
-test('provider-neutral authorization server contract supports discovery, DCR, PKCE S256, resource binding and refresh rotation', async () => {
+test('provider-neutral authorization server contract supports discovery, DCR, PKCE S256, resource binding and refresh rotation', { timeout: 60000 }, async () => {
   const issuerKeys = await generateKeyPair('RS256');
   const resource = 'https://mcp.example.test/mcp';
   const codes = new Map();
@@ -241,6 +241,7 @@ test('provider-neutral authorization server contract supports discovery, DCR, PK
     });
     assert.equal(replay.status, 400);
   } finally {
+    server.closeAllConnections();
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 });
