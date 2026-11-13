@@ -20,7 +20,7 @@ async function withHttpServer(run) {
       runtime.server.listen(0, '127.0.0.1', resolve);
     });
     const address = runtime.server.address();
-    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp` });
+    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, getMetrics: () => runtime.getMetrics() });
   } finally {
     await runtime.close();
     if (previousRoot === undefined) delete process.env.REACT_REVIEW_ROOT;
@@ -95,6 +95,11 @@ test('health and readiness endpoints return minimal operational status', async (
     const wrongMethod = await fetch(`${base}/healthz`, { method: 'POST' });
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get('allow'), 'GET');
+    const metrics = getMetrics();
+    assert.equal(metrics.counters.http_requests_total, 3);
+    assert.equal(metrics.http_requests_by_route.health, 3);
+    assert.equal(metrics.http_requests_by_status_class['2xx'], 2);
+    assert.equal(metrics.http_requests_by_status_class['4xx'], 1);
   });
 });
 
