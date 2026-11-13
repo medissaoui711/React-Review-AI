@@ -50,8 +50,8 @@ const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false
 };
 
-function oauthToolConfig() {
-  const config = readAuthConfig(process.env, { allowHttpLoopback: process.env.NODE_ENV === 'test' });
+function oauthToolConfig(env = process.env) {
+  const config = readAuthConfig(env, { allowHttpLoopback: env.NODE_ENV === 'test' });
   const configured = Boolean(config);
   const scope = config?.scope || 'review:read';
   const runtime = config ? {
@@ -117,9 +117,9 @@ function registerReadOnlyTool(server, name, config, handler, oauth) {
   });
 }
 
-export async function createServer({ metrics } = {}) {
-  const review = await createReviewService(process.env.REACT_REVIEW_ROOT, { metrics });
-  const oauth = oauthToolConfig();
+export async function createServer({ metrics, env = process.env } = {}) {
+  const review = await createReviewService(env.REACT_REVIEW_ROOT, { metrics });
+  const oauth = oauthToolConfig(env);
   const server = new McpServer({
     ...SERVER_INFO,
     instructions: [
