@@ -142,7 +142,7 @@ export async function createServer() {
 
   registerReadOnlyTool(server, 'review_component', {
     title: 'Review React Component',
-    description: 'AST-based review of one source file relative to the trusted project root. Absolute paths and project-root overrides are rejected.',
+    description: 'Read-only AST review of one source file in an isolated worker with an enforceable analysis timeout. Absolute paths and project-root overrides are rejected.',
     inputSchema: z.object({
       file_path: z.string().min(1).describe('Path to one source file, relative to the trusted project root.')
     }).strict()
