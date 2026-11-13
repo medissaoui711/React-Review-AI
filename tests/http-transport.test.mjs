@@ -29,6 +29,43 @@ async function withHttpServer(run) {
   }
 }
 
+test('health and readiness endpoints return minimal operational status', async () => {
+  await withHttpServer(async ({ endpoint }) => {
+    const base = endpoint.slice(0, -'/mcp'.length);
+    const health = await fetch(`${base}/healthz`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: 'ok' });
+    assert.equal(health.headers.get('cache-control'), 'no-store');
+
+    const ready = await fetch(`${base}/readyz`);
+    assert.equal(ready.status, 200);
+    assert.deepEqual(await ready.json(), { status: 'ready' });
+    assert.equal(ready.headers.get('cache-control'), 'no-store');
+
+    const wrongMethod = await fetch(`${base}/healthz`, { method: 'POST' });
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get('allow'), 'GET');
+  });
+});
+
+test('readiness remains unavailable when the configured project root is invalid', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-not-ready-'));
+  const runtime = createHttpServer({ REACT_REVIEW_ROOT: path.join(parent, 'missing-project') });
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/readyz`);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { status: 'not_ready' });
+  } finally {
+    await runtime.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test('Streamable HTTP exposes one MCP endpoint and rejects unknown paths', async () => {
   await withHttpServer(async ({ endpoint }) => {
     const response = await fetch(endpoint.replace('/mcp', '/unknown'));
