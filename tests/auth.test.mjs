@@ -51,6 +51,7 @@ function testEnv(overrides = {}) {
     OAUTH_ISSUER_URL: issuer,
     OAUTH_JWKS_URL: 'https://identity.example.test/.well-known/jwks.json',
     MCP_PUBLIC_URL: 'http://127.0.0.1:3000/mcp',
+    MCP_ALLOWED_ORIGIN_HOSTS: 'client.example.test',
     ...overrides
   };
 }
@@ -229,6 +230,14 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
     });
     assert.ok([400, 403].includes(wrongHost.status));
 
+    const allowedBrowserOrigin = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { origin: 'https://client.example.test', 'content-type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(allowedBrowserOrigin.status, 401);
+    assert.match(allowedBrowserOrigin.headers.get('www-authenticate') || '', /resource_metadata=/);
+
     const unauthenticated = await fetch(`${base}/mcp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -244,5 +253,16 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
   } finally {
     await runtime.close();
     await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test('origin allowlist rejects wildcard, scheme and port entries', () => {
+  for (const value of ['*', 'https://client.example.test', 'client.example.test:443']) {
+    assert.throws(
+      () => createHttpServer({ ...testEnv(), MCP_ALLOWED_ORIGIN_HOSTS: value }, {
+        jwks: createLocalJWKSet({ keys: [] })
+      }),
+      /hostnames only/
+    );
   }
 });
