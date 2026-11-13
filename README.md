@@ -138,7 +138,7 @@ The MCP CI workflow runs a bounded synthetic project scan (100 JSX files, approx
 
 ## Production certification status
 
-Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector interoperability, and deployment-level monitoring remain owner-controlled gates. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
+Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector Web UI manual validation and deployment-level monitoring remain owner-controlled gates. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
 
 ## HTTP observability and privacy
 
