@@ -221,7 +221,7 @@ jobs:
           cat /tmp/react-review-ai-http.log
 
       - name: Commit source tree and reproducible dependency lock
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
