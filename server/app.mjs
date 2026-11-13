@@ -7,44 +7,44 @@ const SERVER_INFO = { name: 'react-review-ai', version: '0.6.0' };
 const findingSchema = z.object({
   id: z.string(), rule_id: z.string(), severity: z.enum(['Critical', 'High', 'Medium', 'Low', 'Info']),
   category: z.string(), confidence: z.enum(['low', 'medium', 'high', 'heuristic']),
-  file: z.string(), line: z.number().nullable(), column: z.number().nullable(),
+  file: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]),
   evidence: z.string(), explanation: z.string(), recommendation: z.string(), verification: z.string()
-}).passthrough();
+}).strict();
 const summarySchema = z.object({
   total: z.number(),
   by_severity: z.record(z.string(), z.number()),
   by_category: z.record(z.string(), z.number())
-}).passthrough();
+}).strict();
 const executionSchema = z.object({
   bytes_read: z.number().optional(), truncated: z.boolean(), timed_out: z.boolean(),
   duration_ms: z.number().optional()
-}).passthrough();
+}).strict();
 const outputSchemas = {
   review_project: z.object({ data: z.object({
     product: z.string(), mode: z.string(), project_scope: z.string(),
     scanned_file_count: z.number(), source_file_count: z.number(),
-    detected: z.record(z.string(), z.unknown()), summary: summarySchema,
-    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.number().nullable(), column: z.number().nullable() }).passthrough()),
+    detected: z.object({ react: z.boolean(), typescript: z.boolean(), test_tools: z.array(z.string()) }).strict(), summary: summarySchema,
+    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]) }).strict()),
     skipped_files: z.array(z.object({ file: z.string(), reason: z.string() })),
     execution: executionSchema, limitations: z.array(z.string())
-  }).passthrough() }),
+  }).strict() }),
   review_component: z.object({ data: z.object({
     file: z.string(), mode: z.string(), summary: summarySchema,
     findings: z.array(findingSchema), parse_error: z.object({
-      message: z.string(), line: z.number().nullable(), column: z.number().nullable()
-    }).nullable(), skipped_reason: z.string().nullable(), timed_out: z.boolean().optional()
-  }).passthrough() }),
+      message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()])
+    }).nullable(), skipped_reason: z.union([z.string(), z.null()]), timed_out: z.boolean().optional()
+  }).strict() }),
   run_test_audit: z.object({ data: z.object({
     mode: z.string(), test_file_count: z.number(), test_files: z.array(z.string()),
     related_config_files: z.array(z.string()), detected_frameworks: z.array(z.string()),
-    test_scripts: z.record(z.string(), z.unknown()), inventory_truncated: z.boolean(), note: z.string()
-  }).passthrough() }),
+    test_scripts: z.record(z.string(), z.string()), inventory_truncated: z.boolean(), note: z.string()
+  }).strict() }),
   audit_accessibility: z.object({ data: z.object({
     standard_target: z.string(), mode: z.string(), scanned_source_files: z.number(),
     summary: summarySchema, findings: z.array(findingSchema),
-    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.number().nullable(), column: z.number().nullable() }).passthrough()),
+    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]) }).strict()),
     execution: executionSchema, limitations: z.array(z.string())
-  }).passthrough() })
+  }).strict() })
 };
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false
