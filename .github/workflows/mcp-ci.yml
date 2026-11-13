@@ -116,6 +116,7 @@ jobs:
 
           try {
             await client.connect(transport);
+            assert.equal(client.getProtocolEra(), 'modern', 'MCP server must negotiate the modern protocol era');
             const result = await client.listTools();
             const actual = result.tools.map((tool) => tool.name).sort();
             assert.deepEqual(actual, expected, 'MCP tools/list must expose all four stable tools');
@@ -197,6 +198,7 @@ jobs:
 
           try {
             await client.connect(transport);
+            assert.equal(client.getProtocolEra(), 'modern', 'MCP HTTP server must negotiate the modern protocol era');
             const result = await client.listTools();
             assert.deepEqual(result.tools.map((tool) => tool.name).sort(), expected);
             for (const tool of result.tools) {
