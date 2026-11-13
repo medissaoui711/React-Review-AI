@@ -233,13 +233,13 @@ jobs:
           PORT: 43128
         run: |
           set -euo pipefail
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method initialize --format json > /tmp/inspector-stdio-init.json
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/list --format json > /tmp/inspector-stdio-tools.json
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method initialize --format json > /tmp/inspector-stdio-init.json
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method tools/list --format json > /tmp/inspector-stdio-tools.json
           jq -e '.result.tools | map(.name) | sort == ["audit_accessibility","review_component","review_project","run_test_audit"]' /tmp/inspector-stdio-tools.json > /dev/null
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_project --format json > /dev/null
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_component --tool-arg file_path=server/index.mjs --format json > /dev/null
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name run_test_audit --format json > /dev/null
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name audit_accessibility --format json > /dev/null
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_project --format json > /dev/null
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_component --tool-arg file_path=server/index.mjs --format json > /dev/null
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method tools/call --tool-name run_test_audit --format json > /dev/null
+          npx --yes @modelcontextprotocol/inspector --cli --protocol-era legacy node "$MCP_SERVER_ENTRY" --method tools/call --tool-name audit_accessibility --format json > /dev/null
           echo "MCP Inspector STDIO initialize/tools/list/all four tools: PASS"
 
           node "$PACKAGE_DIR/server/http.mjs" >/tmp/react-review-ai-inspector-http.log 2>&1 &
