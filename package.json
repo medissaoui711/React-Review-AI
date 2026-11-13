@@ -1,6 +1,6 @@
 {
   "name": "react-review-ai-mcp-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Read-only React review MCP server using the official MCP TypeScript SDK.",
@@ -9,13 +9,14 @@
   },
   "scripts": {
     "start": "node server/index.mjs",
-    "check": "node --check server/index.mjs && node --check server/app.mjs && node --check server/http.mjs && node --check server/review.mjs",
+    "check": "node --check server/index.mjs && node --check server/app.mjs && node --check server/http.mjs && node --check server/review.mjs && node --check server/analysis-engine.mjs",
     "test": "node --test",
     "start:http": "node server/http.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
     "zod": "4.2.0",
-    "@modelcontextprotocol/node": "2.1.2"
+    "@modelcontextprotocol/node": "2.1.2",
+    "@babel/parser": "7.28.5"
   }
 }
