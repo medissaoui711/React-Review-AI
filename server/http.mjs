@@ -161,6 +161,18 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       // the ChatGPT tool-level auth challenge when no valid AuthInfo is present.
       if (oauth && await isToolCallRequest(safeRequest)) {
         const authorization = safeRequest.headers.get('authorization');
+        // Browser MCP clients need an HTTP challenge so the official SDK can
+        // run OAuth discovery and Authorization Code + PKCE. Non-browser
+        // hosts retain the MCP-level challenge used by ChatGPT integrations.
+        if (!authorization && safeRequest.headers.has('origin')) {
+          return new Response('Unauthorized', {
+            status: 401,
+            headers: {
+              'Cache-Control': 'no-store',
+              'WWW-Authenticate': oauth.challenge('invalid_token', 'A bearer access token is required.')
+            }
+          });
+        }
         if (authorization) {
           let authResult;
           try {
