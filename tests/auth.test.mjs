@@ -235,6 +235,7 @@ test('HTTP auth reports a retryable service error when JWKS infrastructure is un
       headers: {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
         accept: 'application/json, text/event-stream'
       },
       body: JSON.stringify({
