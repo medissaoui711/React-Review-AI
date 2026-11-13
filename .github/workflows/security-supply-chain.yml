@@ -76,7 +76,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install locked dependencies
-        run: npm ci --ignore-scripts --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Audit the complete dependency tree
         run: npm audit --audit-level=high
       - name: Generate CycloneDX SBOM and license inventory
