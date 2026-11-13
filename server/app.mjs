@@ -7,7 +7,7 @@ const SERVER_INFO = { name: 'react-review-ai', version: '0.6.0' };
 const findingSchema = z.object({
   id: z.string(), rule_id: z.string(), severity: z.enum(['Critical', 'High', 'Medium', 'Low', 'Info']),
   category: z.string(), confidence: z.enum(['low', 'medium', 'high', 'heuristic']),
-  file: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]),
+  file: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]),
   evidence: z.string(), explanation: z.string(), recommendation: z.string(), verification: z.string()
 }).strict();
 const summarySchema = z.object({
@@ -25,15 +25,15 @@ const outputSchemas = {
     scanned_file_count: z.number(), source_file_count: z.number(),
     limits: z.object({ maxFiles: z.number(), maxFileBytes: z.number(), maxTotalBytes: z.number(), maxDurationMs: z.number(), maxFindings: z.number() }).strict(),
     detected: z.object({ react: z.boolean(), typescript: z.boolean(), test_tools: z.array(z.string()) }).strict(), summary: summarySchema,
-    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]) }).strict()),
+    findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]) }).strict()),
     skipped_files: z.array(z.object({ file: z.string(), reason: z.string() })),
     execution: executionSchema, limitations: z.array(z.string())
   }).strict() }),
   review_component: z.object({ data: z.object({
     file: z.string(), mode: z.string(), summary: summarySchema,
     findings: z.array(findingSchema), parse_error: z.object({
-      message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()])
-    }).nullable(), skipped_reason: z.union([z.string(), z.null()]), timed_out: z.boolean().optional()
+      message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()])
+    }).nullable(), skipped_reason: z.union([z.enum(['source_exceeds_parser_limit', 'parse_error', 'analysis_timeout', 'analysis_worker_error']), z.null()]), timed_out: z.boolean().optional()
   }).strict() }),
   run_test_audit: z.object({ data: z.object({
     mode: z.string(), test_file_count: z.number(), test_files: z.array(z.string()),
@@ -43,7 +43,7 @@ const outputSchemas = {
   audit_accessibility: z.object({ data: z.object({
     standard_target: z.string(), mode: z.string(), scanned_source_files: z.number(),
     summary: summarySchema, findings: z.array(findingSchema),
-    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]) }).strict()),
+    parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number().int().positive(), z.null()]), column: z.union([z.number().int().positive(), z.null()]) }).strict()),
     execution: executionSchema, limitations: z.array(z.string())
   }).strict() })
 };
