@@ -14,14 +14,14 @@ test('container image runs the existing HTTP server as a non-root user', async (
   assert.match(dockerfile, /CMD \["node", "server\/http\.mjs"\]/);
 });
 
-test('Cloudflare config binds one lite container to the named Durable Object', async () => {
+test('Cloudflare config binds a basic Durable Object-managed container', async () => {
   const config = await read('cloudflare.config.ts');
   assert.match(config, /defineContainer/);
   assert.match(config, /schedulingPolicy: "durable_object"/);
   assert.match(config, /images:\s*\{/);
   assert.match(config, /dockerfile: "\.\/Dockerfile"/);
   assert.doesNotMatch(config, /maxInstances|instanceType/);
-  assert.match(config, /maxInstances: 1/);
+  assert.match(config, /JwksEgress: exports\.worker\(\)/);
   assert.match(config, /exports\.durableObject/);
   assert.match(config, /bindings\.durableObject/);
   assert.doesNotMatch(config, /wrangler\.toml|wrangler\.jsonc/);
@@ -39,6 +39,7 @@ test('public Worker exposes only the intended MCP and health routes', async () =
   assert.match(worker, /cf-connecting-ip/);
   assert.match(worker, /setInactivityTimeout/);
   assert.match(worker, /interceptOutboundHttps/);
+  assert.match(worker, /instance: "basic"/);
   assert.match(worker, /enableInternet: false/);
   assert.match(worker, /class JwksEgress extends WorkerEntrypoint/);
   assert.doesNotMatch(worker, /enableInternet: true/);
