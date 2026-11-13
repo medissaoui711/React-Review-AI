@@ -131,6 +131,15 @@ jobs:
           }
           NODE
 
+      - name: MCP Inspector modern stdio interoperability diagnostic
+        continue-on-error: true
+        timeout-minutes: 3
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        env:
+          REACT_REVIEW_ROOT: ${{ github.workspace }}
+        run: |
+          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern node server/index.mjs --method tools/list --format json
+
       - name: MCP Streamable HTTP server/discover, tools/list, and tools/call integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
@@ -194,6 +203,8 @@ jobs:
             await client.close();
           }
           NODE
+          echo "Running official Inspector modern-era HTTP interoperability diagnostic"
+          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/list --format json || echo "Inspector HTTP diagnostic did not pass; see step output (non-blocking)."
           cat /tmp/react-review-ai-http.log
 
 
