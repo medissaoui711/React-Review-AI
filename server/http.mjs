@@ -146,7 +146,15 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       if (oauth && await isToolCallRequest(safeRequest)) {
         const authorization = safeRequest.headers.get('authorization');
         if (authorization) {
-          const authResult = await oauth.authenticate(safeRequest);
+          let authResult;
+          try {
+            authResult = await oauth.authenticate(safeRequest);
+          } catch {
+            return new Response('Authentication service temporarily unavailable.', {
+              status: 503,
+              headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' }
+            });
+          }
           if (authResult instanceof Response) {
             const insufficientScope = authResult.status === 403;
             return mcp.fetch(safeRequest, {
