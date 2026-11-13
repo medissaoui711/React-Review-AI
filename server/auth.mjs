@@ -126,7 +126,7 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
 
   const authenticate = async request => {
     const authorization = request.headers.get('authorization') || '';
-    const match = /^Bearer\\s+([^\\s]+)$/i.exec(authorization);
+    const match = /^Bearer\s+([^\s]+)$/i.exec(authorization);
     if (!match) {
       return new Response('Unauthorized', {
         status: 401,
