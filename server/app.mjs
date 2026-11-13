@@ -56,7 +56,7 @@ function oauthToolConfig() {
   const scope = config?.scope || 'review:read';
   const runtime = config ? {
     challenge(errorCode, description) {
-      const safeDescription = String(description).replace(/[^\\x20-\\x21\\x23-\\x5B\\x5D-\\x7E]/g, ' ').slice(0, 180);
+      const safeDescription = String(description).replace(/[^a-zA-Z0-9 .,:;_'-]/g, ' ').slice(0, 180);
       const error = errorCode === 'insufficient_scope' ? 'insufficient_scope' : 'invalid_token';
       return `Bearer resource_metadata="${config.metadataUrl}", scope="${scope}", error="${error}", error_description="${safeDescription}"`;
     }
