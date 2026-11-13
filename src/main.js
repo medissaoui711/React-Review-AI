@@ -129,7 +129,7 @@ app.innerHTML = `
                 <span>Relative component path</span>
                 <input type="text" data-component-path placeholder="src/components/Button.jsx" autocomplete="off" />
               </label>
-              <div class="card-footer"><span>${tool.tag}</span><button type="button" class="tool-action" data-run-tool="${tool.name}" disabled>Run analysis</button></div>
+              <div class="card-footer"><span>${tool.tag}</span><button type="button" class="tool-action" data-run-tool="${tool.name}" aria-label="Run ${tool.title}" aria-controls="tool-output" disabled>Run analysis</button></div>
             </article>
           `).join("")}
         </div>
