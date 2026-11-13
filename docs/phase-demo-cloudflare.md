@@ -164,6 +164,7 @@ Before enabling browser connectivity, the owner must configure the Auth0 applica
 4. API audience equal to the exact MCP resource URL, including `/mcp`.
 5. The `review:read` API permission and RS256/ES256 access-token signing compatible with the resource server.
 6. Auth0 CORS/allowed origins for `https://react-review-ai.pages.dev`, as required by the tenant configuration.
+7. Enable **Resource Parameter Compatibility Profile** in Auth0 Dashboard → Settings → Advanced. The MCP SDK sends the RFC 8707 `resource` parameter; without this profile Auth0 can fall back to the userinfo audience instead of the configured API audience. See [Auth0's MCP audience guidance](https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0).
 
 The SDK performs protected-resource and authorization-server metadata discovery, validates issuer binding, handles the PKCE code exchange, and reconnects using a fresh Streamable HTTP transport. Callback `state` is checked before code exchange. Callback error descriptions are never rendered.
 
