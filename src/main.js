@@ -151,9 +151,9 @@ app.innerHTML = `
             <p>${mcpConfiguration.detail}</p>
           </div>
           <span class="connection-state">${mcpConfiguration.state === "configured" ? "NOT VERIFIED" : mcpConfiguration.state === "invalid" ? "INVALID CONFIG" : "PENDING"}</span>
-          <button type="button" class="connection-action" id="connect-mcp" ${oauthConfigurationReady ? "" : "disabled"}>Connect MCP</button>
+          <button type="button" class="connection-action" id="connect-mcp">Connect MCP</button>
         </div>
-        <p class="integration-note">No access token or client secret is stored in this static frontend. The dashboard does not send requests until the browser OAuth flow and MCP session lifecycle are implemented and tested. Browser access also requires an explicit server-side origin allowlist.</p>
+        <p class="integration-note">Browser integration uses the official MCP client with Authorization Code + PKCE. Access and refresh tokens stay in memory; only the one-time PKCE verifier, OAuth state, and discovery metadata survive the redirect in session-scoped storage. The server must explicitly allow this Pages origin, and the Auth0 public client must list this exact callback URL.</p>
       </section>
 
       <section class="workflow" id="workflow">
