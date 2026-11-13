@@ -109,7 +109,7 @@ const report = {
 };
 
 await mkdir('artifacts', { recursive: true });
-await writeFile('artifacts/http-load-benchmark.json', JSON.stringify(report, null, 2) + '\\n');
+await writeFile('artifacts/http-load-benchmark.json', JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report, null, 2));
 if (failed > 0 || report.latency_ms.p95 > options.maxP95Ms) {
   process.exitCode = 1;
