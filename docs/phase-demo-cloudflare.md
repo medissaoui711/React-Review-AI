@@ -52,3 +52,15 @@ Before deployment, an owner must separately approve:
 6. A manual `cf deploy` operation.
 
 No Cloudflare account mutation or deployment is part of this branch implementation.
+
+## CI validation evidence
+
+The feature-branch validation run completed successfully for the implementation tree before the generated lockfile publication:
+- Cloudflare Worker and Container image build completed without deployment.
+- Regression/security test suite passed (62 tests).
+- MCP modern STDIO and Inspector interoperability passed.
+- MCP Streamable HTTP discovery, tools/list, tools/call, Inspector interoperability, and bounded load test passed.
+- AST performance benchmark completed and its artifact was uploaded.
+- The workflow then regenerated and committed the npm lockfile to this feature branch.
+
+A subsequent pull-request security run must validate the synchronized lockfile with a fresh `npm ci`; the earlier run against the pre-sync lockfile correctly failed and is not counted as a passing security result.
