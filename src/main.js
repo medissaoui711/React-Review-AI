@@ -192,10 +192,12 @@ if ("IntersectionObserver" in window) {
 // Browser OAuth uses the official MCP SDK. Only the short-lived PKCE verifier,
 // state and discovery metadata survive the authorization redirect; access and
 // refresh tokens remain in memory and are never written to browser storage.
+const OAUTH_TRANSACTION_TTL_MS = 10 * 60 * 1000;
 const OAUTH_SESSION_KEYS = Object.freeze({
   state: "react-review-ai.oauth.state",
   verifier: "react-review-ai.oauth.pkce-verifier",
   discovery: "react-review-ai.oauth.discovery",
+  createdAt: "react-review-ai.oauth.created-at",
 });
 
 function readOAuthSessionValue(key) {
@@ -254,12 +256,19 @@ class BrowserOAuthProvider {
 
   state() {
     const value = crypto.randomUUID();
+    writeOAuthSessionValue(OAUTH_SESSION_KEYS.createdAt, String(Date.now()));
     writeOAuthSessionValue(OAUTH_SESSION_KEYS.state, value);
     return value;
   }
 
   get pendingState() {
-    return readOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+    const state = readOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+    const createdAt = Number(readOAuthSessionValue(OAUTH_SESSION_KEYS.createdAt));
+    if (!state || !Number.isFinite(createdAt) || Date.now() - createdAt > OAUTH_TRANSACTION_TTL_MS) {
+      this.clearOAuthTransaction();
+      return null;
+    }
+    return state;
   }
 
   saveCodeVerifier(verifier) {
@@ -267,6 +276,7 @@ class BrowserOAuthProvider {
   }
 
   codeVerifier() {
+    if (!this.pendingState) throw new Error("The PKCE transaction has expired. Please reconnect.");
     const verifier = readOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
     if (!verifier) throw new Error("The PKCE transaction has expired. Please reconnect.");
     return verifier;
@@ -277,6 +287,7 @@ class BrowserOAuthProvider {
   }
 
   discoveryState() {
+    if (!this.pendingState) return undefined;
     const value = readOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
     if (!value) return undefined;
     try { return JSON.parse(value); } catch {
@@ -293,13 +304,17 @@ class BrowserOAuthProvider {
     if (scope === "tokens" || scope === "all") this.accessTokens = undefined;
     if (scope === "verifier" || scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
     if (scope === "discovery" || scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
-    if (scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+    if (scope === "all") {
+      removeOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+      removeOAuthSessionValue(OAUTH_SESSION_KEYS.createdAt);
+    }
   }
 
   clearOAuthTransaction() {
     removeOAuthSessionValue(OAUTH_SESSION_KEYS.state);
     removeOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
     removeOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
+    removeOAuthSessionValue(OAUTH_SESSION_KEYS.createdAt);
   }
 }
 
