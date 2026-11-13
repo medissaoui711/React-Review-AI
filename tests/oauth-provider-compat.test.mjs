@@ -107,7 +107,11 @@ test('provider-neutral authorization server contract supports discovery, DCR, PK
 
       if (form.get('grant_type') === 'refresh_token') {
         const oldToken = form.get('refresh_token');
-        assert.ok(refreshTokens.has(oldToken), 'refresh token must be active');
+        if (!refreshTokens.has(oldToken)) {
+          response.writeHead(400);
+          response.end('invalid_grant');
+          return;
+        }
         refreshTokens.delete(oldToken);
         const nextRefreshToken = `refresh-token-${++refreshCounter + 1}`;
         refreshTokens.add(nextRefreshToken);
