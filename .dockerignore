@@ -1,0 +1,14 @@
+.git
+.github
+.codex-plugin
+node_modules
+coverage
+artifacts
+.env
+.env.*
+!.env.example
+*.log
+README.md
+docs
+tests
+scripts
