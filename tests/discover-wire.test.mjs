@@ -39,13 +39,13 @@ test('modern server/discover wire response follows the 2026-07-28 result envelop
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => {
       output += chunk;
-      const line = output.split(/\\r?\\n/).find(value => value.trim());
+      const line = output.split(/\r?\n/).find(value => value.trim());
       if (line) {
         clearTimeout(timer);
         resolve(line);
       }
     });
-    child.stdin.write(JSON.stringify(request) + '\\n');
+    child.stdin.write(JSON.stringify(request) + '\n');
   });
 
   child.stdin.end();
