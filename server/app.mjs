@@ -23,6 +23,7 @@ const outputSchemas = {
   review_project: z.object({ data: z.object({
     product: z.string(), mode: z.string(), project_scope: z.string(),
     scanned_file_count: z.number(), source_file_count: z.number(),
+    limits: z.object({ maxFiles: z.number(), maxFileBytes: z.number(), maxTotalBytes: z.number(), maxDurationMs: z.number(), maxFindings: z.number() }).strict(),
     detected: z.object({ react: z.boolean(), typescript: z.boolean(), test_tools: z.array(z.string()) }).strict(), summary: summarySchema,
     findings: z.array(findingSchema), parse_errors: z.array(z.object({ file: z.string(), message: z.string(), line: z.union([z.number(), z.null()]), column: z.union([z.number(), z.null()]) }).strict()),
     skipped_files: z.array(z.object({ file: z.string(), reason: z.string() })),
