@@ -55,7 +55,10 @@ function remoteHealthRequest(port, headers = {}) {
       path: '/healthz',
       method: 'GET',
       headers,
-      lookup: (_hostname, _options, callback) => callback(null, '127.0.0.1', 4)
+      lookup: (_hostname, options, callback) => {
+        if (options?.all) callback(null, [{ address: '127.0.0.1', family: 4 }]);
+        else callback(null, '127.0.0.1', 4);
+      }
     }, response => {
       response.resume();
       response.once('end', () => resolve(response.statusCode));
