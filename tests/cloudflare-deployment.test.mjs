@@ -112,3 +112,19 @@ test('D5 CI trigger is branch-scoped and remains non-deploying', async () => {
   assert.match(workflow, /cloudflare:build/);
   assert.doesNotMatch(workflow, /cf deploy/);
 });
+
+
+test('static dashboard exposes safe MCP configuration readiness without claiming live connectivity', async () => {
+  const main = await read('src/main.js');
+  assert.match(main, /VITE_MCP_ENDPOINT/);
+  assert.match(main, /endpoint\.protocol !== "https:"/);
+  assert.match(main, /endpoint\.username/);
+  assert.match(main, /endpoint\.password/);
+  assert.match(main, /endpoint\.search/);
+  assert.match(main, /endpoint\.hash/);
+  assert.match(main, /pathname\.replace\(\/\\\\\$\/\//);
+  assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/);
+  assert.match(main, /No access token or client secret is stored/);
+  assert.doesNotMatch(main, /localStorage|sessionStorage/);
+  assert.doesNotMatch(main, /fetch\(/);
+});
