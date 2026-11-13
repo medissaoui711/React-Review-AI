@@ -22,11 +22,11 @@ function isLoopback(host) {
   return LOOPBACK_HOSTS.has(host.replace(/^\[|\]$/g, '').toLowerCase());
 }
 
-export function createHttpServer(env = process.env) {
+export function createHttpServer(env = process.env, authOptions = {}) {
   const bindHost = env.MCP_HTTP_HOST || '127.0.0.1';
   const allowRemote = env.MCP_HTTP_ALLOW_REMOTE === 'true';
   const remoteBind = !isLoopback(bindHost);
-  const oauth = createOAuthRuntime(env);
+  const oauth = createOAuthRuntime(env, authOptions);
 
   if (remoteBind && !allowRemote) {
     throw new Error('Non-loopback HTTP binding requires MCP_HTTP_ALLOW_REMOTE=true.');
