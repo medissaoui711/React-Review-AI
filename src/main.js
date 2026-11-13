@@ -1,26 +1,31 @@
 import "./style.css";
+import { Client, StreamableHTTPClientTransport, UnauthorizedError } from "@modelcontextprotocol/client";
 
 const tools = [
   {
     number: "01",
+    name: "review_project",
     title: "Project Review",
     description: "Inspect a React codebase for maintainability, reliability, and common engineering risks.",
     tag: "Repository analysis",
   },
   {
     number: "02",
+    name: "review_component",
     title: "Component Review",
     description: "Review a focused component for correctness, React patterns, and potential regressions.",
     tag: "Component analysis",
   },
   {
     number: "03",
+    name: "run_test_audit",
     title: "Test Audit",
     description: "Identify test gaps and suggest practical coverage improvements for critical behavior.",
     tag: "Quality signals",
   },
   {
     number: "04",
+    name: "audit_accessibility",
     title: "Accessibility Audit",
     description: "Highlight accessibility heuristics and actionable improvements for inclusive interfaces.",
     tag: "A11y heuristics",
@@ -68,6 +73,8 @@ function getMcpConfiguration() {
 }
 
 const mcpConfiguration = getMcpConfiguration();
+const oauthClientId = import.meta.env.VITE_OAUTH_CLIENT_ID?.trim();
+const oauthConfigurationReady = mcpConfiguration.state === "configured" && Boolean(oauthClientId);
 const app = document.querySelector("#app");
 
 app.innerHTML = `
@@ -118,10 +125,18 @@ app.innerHTML = `
               <div class="card-top"><span class="tool-number">${tool.number}</span><span class="card-arrow" aria-hidden="true">↗</span></div>
               <h3>${tool.title}</h3>
               <p>${tool.description}</p>
-              <div class="card-footer"><span>${tool.tag}</span><span class="footer-arrow" aria-hidden="true">→</span></div>
+              <label class="tool-input-label" ${tool.name === "review_component" ? "" : "hidden"}>
+                <span>Relative component path</span>
+                <input type="text" data-component-path placeholder="src/components/Button.jsx" autocomplete="off" />
+              </label>
+              <div class="card-footer"><span>${tool.tag}</span><button type="button" class="tool-action" data-run-tool="${tool.name}" disabled>Run analysis</button></div>
             </article>
           `).join("")}
         </div>
+        <section class="tool-output" id="tool-output" aria-live="polite" aria-label="Tool result" hidden>
+          <div class="tool-output-heading"><h3 id="tool-output-title">Analysis result</h3><button type="button" id="clear-tool-output">Clear</button></div>
+          <pre id="tool-output-content"></pre>
+        </section>
       </section>
 
       <section class="section integration-section" id="integration" aria-labelledby="integration-title">
@@ -136,6 +151,7 @@ app.innerHTML = `
             <p>${mcpConfiguration.detail}</p>
           </div>
           <span class="connection-state">${mcpConfiguration.state === "configured" ? "NOT VERIFIED" : mcpConfiguration.state === "invalid" ? "INVALID CONFIG" : "PENDING"}</span>
+          <button type="button" class="connection-action" id="connect-mcp" ${oauthConfigurationReady ? "" : "disabled"}>Connect MCP</button>
         </div>
         <p class="integration-note">No access token or client secret is stored in this static frontend. The dashboard does not send requests until the browser OAuth flow and MCP session lifecycle are implemented and tested. Browser access also requires an explicit server-side origin allowlist.</p>
       </section>
@@ -170,4 +186,295 @@ if ("IntersectionObserver" in window) {
   }, { rootMargin: "-20% 0px -65% 0px" });
 
   sections.forEach((section) => observer.observe(section));
+}
+
+
+// Browser OAuth uses the official MCP SDK. Only the short-lived PKCE verifier,
+// state and discovery metadata survive the authorization redirect; access and
+// refresh tokens remain in memory and are never written to browser storage.
+const OAUTH_SESSION_KEYS = Object.freeze({
+  state: "react-review-ai.oauth.state",
+  verifier: "react-review-ai.oauth.pkce-verifier",
+  discovery: "react-review-ai.oauth.discovery",
+});
+
+function readOAuthSessionValue(key) {
+  try { return window.sessionStorage.getItem(key); } catch {
+    throw new Error("Secure browser session storage is unavailable; OAuth cannot continue.");
+  }
+}
+
+function writeOAuthSessionValue(key, value) {
+  try { window.sessionStorage.setItem(key, value); } catch {
+    throw new Error("Secure browser session storage is unavailable; OAuth cannot continue.");
+  }
+}
+
+function removeOAuthSessionValue(key) {
+  try { window.sessionStorage.removeItem(key); } catch {
+    // Cleanup is best-effort; no credential is persisted here.
+  }
+}
+
+class BrowserOAuthProvider {
+  constructor(clientId) {
+    this.clientId = clientId;
+    this.accessTokens = undefined;
+    this.redirectUrl = new URL(window.location.pathname, window.location.origin).href;
+    this.clientMetadata = {
+      client_name: "React Review AI",
+      redirect_uris: [this.redirectUrl],
+      application_type: "web",
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code"],
+      response_types: ["code"],
+    };
+  }
+
+  clientInformation(context) {
+    if (!context?.issuer || !this.clientId) return undefined;
+    return {
+      client_id: this.clientId,
+      token_endpoint_auth_method: "none",
+      issuer: context.issuer,
+    };
+  }
+
+  saveClientInformation() {
+    // Auth0 uses a pre-registered public client; dynamic registration is not used.
+  }
+
+  tokens() {
+    return this.accessTokens;
+  }
+
+  saveTokens(tokens) {
+    this.accessTokens = tokens;
+  }
+
+  state() {
+    const value = crypto.randomUUID();
+    writeOAuthSessionValue(OAUTH_SESSION_KEYS.state, value);
+    return value;
+  }
+
+  get pendingState() {
+    return readOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+  }
+
+  saveCodeVerifier(verifier) {
+    writeOAuthSessionValue(OAUTH_SESSION_KEYS.verifier, verifier);
+  }
+
+  codeVerifier() {
+    const verifier = readOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
+    if (!verifier) throw new Error("The PKCE transaction has expired. Please reconnect.");
+    return verifier;
+  }
+
+  saveDiscoveryState(discovery) {
+    writeOAuthSessionValue(OAUTH_SESSION_KEYS.discovery, JSON.stringify(discovery));
+  }
+
+  discoveryState() {
+    const value = readOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
+    if (!value) return undefined;
+    try { return JSON.parse(value); } catch {
+      this.clearOAuthTransaction();
+      throw new Error("OAuth discovery state is invalid. Please reconnect.");
+    }
+  }
+
+  redirectToAuthorization(url) {
+    window.location.assign(url.href);
+  }
+
+  invalidateCredentials(scope) {
+    if (scope === "tokens" || scope === "all") this.accessTokens = undefined;
+    if (scope === "verifier" || scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
+    if (scope === "discovery" || scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
+    if (scope === "all") removeOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+  }
+
+  clearOAuthTransaction() {
+    removeOAuthSessionValue(OAUTH_SESSION_KEYS.state);
+    removeOAuthSessionValue(OAUTH_SESSION_KEYS.verifier);
+    removeOAuthSessionValue(OAUTH_SESSION_KEYS.discovery);
+  }
+}
+
+let mcpClient;
+let mcpTransport;
+let oauthProvider;
+
+const connectionCard = document.querySelector(".connection-card");
+const connectionTitle = connectionCard?.querySelector(".connection-copy h3");
+const connectionDetail = connectionCard?.querySelector(".connection-copy p");
+const connectionState = connectionCard?.querySelector(".connection-state");
+const connectButton = document.querySelector("#connect-mcp");
+const runButtons = [...document.querySelectorAll("[data-run-tool]")];
+const toolOutput = document.querySelector("#tool-output");
+const toolOutputTitle = document.querySelector("#tool-output-title");
+const toolOutputContent = document.querySelector("#tool-output-content");
+
+function setConnectionStatus(title, detail, state = "pending") {
+  if (connectionTitle) connectionTitle.textContent = title;
+  if (connectionDetail) connectionDetail.textContent = detail;
+  if (connectionState) connectionState.textContent = state.toUpperCase();
+  connectionCard?.setAttribute("data-connection-state", state);
+}
+
+function clearOAuthCallbackUrl() {
+  window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+}
+
+function showToolOutput(title, value) {
+  if (!toolOutput || !toolOutputTitle || !toolOutputContent) return;
+  toolOutputTitle.textContent = title;
+  toolOutputContent.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  toolOutput.hidden = false;
+}
+
+async function finishOAuthCallback(provider) {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("code") && !params.has("error")) return false;
+
+  const expectedState = provider.pendingState;
+  if (!expectedState || params.get("state") !== expectedState) {
+    provider.clearOAuthTransaction();
+    clearOAuthCallbackUrl();
+    throw new Error("OAuth state validation failed. Start a new connection.");
+  }
+  if (params.has("error")) {
+    provider.clearOAuthTransaction();
+    clearOAuthCallbackUrl();
+    throw new Error("Authorization was cancelled or denied. No provider error details were displayed.");
+  }
+
+  const callbackTransport = new StreamableHTTPClientTransport(
+    new URL(import.meta.env.VITE_MCP_ENDPOINT.trim()),
+    { authProvider: provider },
+  );
+  try {
+    await callbackTransport.finishAuth(params);
+  } finally {
+    await callbackTransport.close();
+  }
+  provider.clearOAuthTransaction();
+  clearOAuthCallbackUrl();
+  return true;
+}
+
+async function connectMcp() {
+  if (!oauthConfigurationReady) {
+    setConnectionStatus(
+      "OAuth configuration required",
+      "Configure the HTTPS MCP endpoint and the Auth0 public client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
+      "invalid",
+    );
+    return;
+  }
+
+  connectButton.disabled = true;
+  setConnectionStatus("Preparing secure connection", "Discovering the protected resource and preparing OAuth Authorization Code + PKCE.", "pending");
+  try {
+    oauthProvider ??= new BrowserOAuthProvider(oauthClientId);
+    await finishOAuthCallback(oauthProvider);
+
+    const client = new Client({ name: "react-review-ai-dashboard", version: "0.6.0" });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(import.meta.env.VITE_MCP_ENDPOINT.trim()),
+      { authProvider: oauthProvider },
+    );
+
+    try {
+      await client.connect(transport);
+    } catch (error) {
+      if (error instanceof UnauthorizedError) return;
+      await transport.close();
+      throw error;
+    }
+
+    mcpClient = client;
+    mcpTransport = transport;
+    const listed = await client.listTools();
+    const availableTools = new Set((listed.tools || []).map((tool) => tool.name));
+    runButtons.forEach((button) => {
+      button.disabled = !availableTools.has(button.dataset.runTool);
+    });
+    setConnectionStatus(
+      "MCP transport ready",
+      "The server handshake and tool discovery succeeded. OAuth is completed when the first protected tool is invoked.",
+      "configured",
+    );
+    connectButton.textContent = "Disconnect";
+    connectButton.disabled = false;
+  } catch (error) {
+    setConnectionStatus("Connection could not be completed", error instanceof Error ? error.message : "Unexpected connection error.", "invalid");
+    connectButton.disabled = false;
+  }
+}
+
+async function disconnectMcp() {
+  try { await mcpClient?.close(); } catch {
+    // Closing a failed or expired transport is best-effort.
+  }
+  try { await mcpTransport?.close(); } catch {
+    // Closing a failed or expired transport is best-effort.
+  }
+  mcpClient = undefined;
+  mcpTransport = undefined;
+  oauthProvider = undefined;
+  runButtons.forEach((button) => { button.disabled = true; });
+  connectButton.textContent = "Connect MCP";
+  setConnectionStatus("MCP disconnected", "The browser session is disconnected. Tokens were held in memory only.", "pending");
+}
+
+async function runMcpTool(name) {
+  if (!mcpClient) {
+    await connectMcp();
+    if (!mcpClient) return;
+  }
+
+  const args = {};
+  if (name === "review_component") {
+    const pathInput = document.querySelector("[data-component-path]");
+    const filePath = pathInput?.value.trim();
+    if (!filePath) {
+      showToolOutput("Component review needs a file path", "Enter a project-relative source path, for example src/components/Button.jsx.");
+      return;
+    }
+    args.file_path = filePath;
+  }
+
+  const button = runButtons.find((item) => item.dataset.runTool === name);
+  if (button) button.disabled = true;
+  showToolOutput("Running " + name, "The read-only analysis request is being sent to the MCP server.");
+  try {
+    const result = await mcpClient.callTool({ name, arguments: args });
+    showToolOutput(name + " result", result.structuredContent?.data ?? result);
+  } catch (error) {
+    if (error instanceof UnauthorizedError) return;
+    showToolOutput(name + " failed", error instanceof Error ? error.message : "The MCP tool request failed.");
+  } finally {
+    if (button && mcpClient) button.disabled = false;
+  }
+}
+
+connectButton?.addEventListener("click", () => {
+  if (mcpClient) void disconnectMcp();
+  else void connectMcp();
+});
+
+runButtons.forEach((button) => {
+  button.addEventListener("click", () => void runMcpTool(button.dataset.runTool));
+});
+
+document.querySelector("#clear-tool-output")?.addEventListener("click", () => {
+  if (toolOutput) toolOutput.hidden = true;
+  if (toolOutputContent) toolOutputContent.textContent = "";
+});
+
+if (oauthConfigurationReady && (new URLSearchParams(window.location.search).has("code") || new URLSearchParams(window.location.search).has("error"))) {
+  void connectMcp();
 }
