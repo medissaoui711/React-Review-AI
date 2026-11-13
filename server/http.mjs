@@ -80,7 +80,14 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
   const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
-  const readiness = createReviewService(env.REACT_REVIEW_ROOT).then(() => true, () => false);
+  const isReady = async () => {
+    try {
+      await createReviewService(env.REACT_REVIEW_ROOT);
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const mcp = createMcpHandler(createServer, { legacy: 'reject' });
 
   const guardedHandler = {
@@ -105,7 +112,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
         if (url.pathname === '/healthz') {
           return Response.json({ status: 'ok' }, { headers: { 'Cache-Control': 'no-store' } });
         }
-        const ready = await readiness;
+        const ready = await isReady();
         return Response.json({ status: ready ? 'ready' : 'not_ready' }, {
           status: ready ? 200 : 503,
           headers: { 'Cache-Control': 'no-store' }
