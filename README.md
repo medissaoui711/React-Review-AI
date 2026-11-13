@@ -134,7 +134,7 @@ The manual workflow `.github/workflows/release-certification.yml` certifies an e
 
 ## Performance evidence
 
-The MCP CI workflow runs a bounded synthetic project scan (100 JSX files, approximately 1 KB each) through the isolated AST worker. It records Node version, OS/architecture, available CPU count, elapsed time, scanned bytes, findings, parse errors, timeout/truncation flags, RSS, and in-process metrics as a 30-day workflow artifact. The gate checks that the synthetic scan stays within the configured 10-second scan ceiling and completes without truncation or parse errors. This is a regression benchmark, not a production capacity claim; deployment-specific load/soak testing remains required.
+The MCP CI workflow runs a bounded synthetic project scan (100 JSX files, approximately 1 KB each) through the isolated AST worker. The MCP CI workflow also runs 100 concurrent-capable modern Streamable HTTP `tools/list` requests through the official MCP client (100 requests, concurrency 3), recording p50/p95/p99 latency, throughput, and errors. These local CI figures are regression signals only, not production capacity claims. It records Node version, OS/architecture, available CPU count, elapsed time, scanned bytes, findings, parse errors, timeout/truncation flags, RSS, and in-process metrics as a 30-day workflow artifact. The gate checks that the synthetic scan stays within the configured 10-second scan ceiling and completes without truncation or parse errors. This is a regression benchmark, not a production capacity claim; deployment-specific load/soak testing remains required.
 
 ## Production certification status
 
