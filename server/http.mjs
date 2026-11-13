@@ -45,9 +45,19 @@ export function createHttpServer(env = process.env) {
     allowedOrigins.add(oauth.config.resource.origin);
   }
 
+  const readPositiveLimit = (name, fallback) => {
+    const raw = env[name] || String(fallback);
+    if (!/^\\d+$/.test(raw) || Number(raw) < 1) throw new Error(`${name} must be a positive integer.`);
+    return Number(raw);
+  };
   const rateLimit = createRequestRateLimiter({
     windowMs: 60_000,
-    maxRequests: Number.parseInt(env.MCP_RATE_LIMIT_PER_MINUTE || '120', 10)
+    maxRequests: readPositiveLimit('MCP_RATE_LIMIT_PER_MINUTE', 120)
+  });
+  const networkRateLimit = createRequestRateLimiter({
+    windowMs: 60_000,
+    maxRequests: readPositiveLimit('MCP_RATE_LIMIT_PER_IP_PER_MINUTE', 300),
+    keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
   const mcp = createMcpHandler(createServer, { legacy: 'reject' });
 
@@ -90,9 +100,21 @@ export function createHttpServer(env = process.env) {
     }
   };
 
+  const nodeHandler = toNodeHandler(guardedHandler);
   const server = createNodeServer(
     { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000 },
-    toNodeHandler(guardedHandler)
+    (request, response) => {
+      const rateRequest = new Request('http://rate-limit.internal/', {
+        headers: { 'x-mcp-rate-limit-key': request.socket.remoteAddress || 'unknown' }
+      });
+      const rejection = networkRateLimit(rateRequest);
+      if (rejection) {
+        response.writeHead(rejection.status, Object.fromEntries(rejection.headers));
+        response.end('Too Many Requests');
+        return;
+      }
+      nodeHandler(request, response);
+    }
   );
 
   return {
