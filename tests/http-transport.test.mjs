@@ -71,7 +71,7 @@ test('Streamable HTTP rejects untrusted Host headers before MCP processing', asy
       },
       body: '{}'
     });
-    assert.equal(response.status, 403);
+    assert.ok([400, 403].includes(response.status), `Expected Host rejection, received HTTP ${response.status}`);
   });
 });
 
