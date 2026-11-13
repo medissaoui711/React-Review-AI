@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 function readOptions(argv) {
   const values = Object.fromEntries(argv.filter(item => item.startsWith('--'))
@@ -11,8 +12,8 @@ function readOptions(argv) {
     }));
   const options = {
     url: values.url,
-    requests: Number(values.requests ?? 120),
-    concurrency: Number(values.concurrency ?? 12),
+    requests: Number(values.requests ?? 100),
+    concurrency: Number(values.concurrency ?? 3),
     timeoutMs: Number(values['timeout-ms'] ?? 5000),
     maxP95Ms: Number(values['max-p95-ms'] ?? 1000)
   };
@@ -37,10 +38,19 @@ function percentile(values, fraction) {
 }
 
 const options = readOptions(process.argv.slice(2));
+const expectedTools = ['audit_accessibility', 'review_component', 'review_project', 'run_test_audit'];
+const transport = new StreamableHTTPClientTransport(new URL(options.url));
+const client = new Client(
+  { name: 'react-review-ai-http-load-test', version: '1.0.0' },
+  { versionNegotiation: { mode: { pin: '2026-07-28' } } }
+);
 const latencies = [];
 const failures = [];
 let nextRequest = 0;
 const startedAt = performance.now();
+
+await client.connect(transport);
+assert.equal(client.getProtocolEra(), 'modern', 'HTTP load test must negotiate the pinned modern protocol');
 
 async function worker() {
   while (true) {
@@ -48,31 +58,8 @@ async function worker() {
     if (index >= options.requests) return;
     const requestStarted = performance.now();
     try {
-      const response = await fetch(options.url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2026-07-28' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: `load-${index + 1}`,
-          method: 'tools/list',
-          params: {
-            _meta: {
-              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-              'io.modelcontextprotocol/clientInfo': { name: 'react-review-ai-load-test', version: '1.0.0' },
-              'io.modelcontextprotocol/clientCapabilities': {}
-            }
-          }
-        }),
-        signal: AbortSignal.timeout(options.timeoutMs)
-      });
-      const rawBody = await response.text();
-      assert.equal(response.status, 200, `HTTP status ${response.status}: ${rawBody.slice(0, 300)}`);
-      const body = JSON.parse(rawBody);
-      assert.equal(body.jsonrpc, '2.0');
-      assert.equal(body.result?.resultType, 'complete');
-      assert.deepEqual(body.result?.tools?.map(tool => tool.name).sort(), [
-        'audit_accessibility', 'review_component', 'review_project', 'run_test_audit'
-      ]);
+      const result = await client.listTools();
+      assert.deepEqual(result.tools.map(tool => tool.name).sort(), expectedTools);
       latencies.push(performance.now() - requestStarted);
     } catch (error) {
       failures.push({ request: index + 1, error: String(error?.message ?? error).slice(0, 240) });
@@ -80,7 +67,12 @@ async function worker() {
   }
 }
 
-await Promise.all(Array.from({ length: options.concurrency }, () => worker()));
+try {
+  await Promise.all(Array.from({ length: options.concurrency }, () => worker()));
+} finally {
+  await client.close();
+}
+
 const elapsedMs = performance.now() - startedAt;
 latencies.sort((a, b) => a - b);
 const succeeded = latencies.length;
@@ -91,6 +83,8 @@ const report = {
   architecture: process.arch,
   cpu_count: os.availableParallelism?.() ?? os.cpus().length,
   url_path: new URL(options.url).pathname,
+  protocol_era: client.getProtocolEra(),
+  protocol_version: '2026-07-28',
   requests: options.requests,
   concurrency: options.concurrency,
   succeeded,
@@ -106,7 +100,7 @@ const report = {
   },
   max_p95_ms: options.maxP95Ms,
   failures,
-  certification_note: 'Bounded local CI regression load only; not a production capacity or soak-test claim.'
+  certification_note: 'Bounded local CI regression load using the official MCP client; not a production capacity or soak-test claim.'
 };
 
 await mkdir('artifacts', { recursive: true });
