@@ -171,3 +171,12 @@ The review engine parses JavaScript, JSX, TypeScript, and TSX into an AST before
 The project scan enforces these default resource budgets: 2,500 discovered files, 500 KB per source file, 20 MB total source bytes, 10 seconds per scan, and 5,000 findings. AST parsing runs in an isolated worker thread; the parent process enforces the remaining wall-clock budget and terminates the worker if parsing exceeds it. The single-file review uses the same worker boundary and a 10-second ceiling. Results report truncation, timeout, skipped files, and parse errors. Filesystem discovery and reads are asynchronous and checked against the scan deadline between operations; the worker timeout specifically prevents synchronous parser work from blocking the MCP event loop. These are safety ceilings, not performance guarantees.
 
 Each MCP tool publishes a dedicated structured output contract. The text response remains available for clients that do not consume structured content. Static rules are signals for human review; they do not prove runtime exploitability or accessibility conformance.
+
+
+## Cloudflare public demo
+
+The Cloudflare demo implementation is maintained on the separate `phase-demo-cloudflare` branch. It uses a Cloudflare Worker, a Durable Object, and a Node.js 22 Container. The demo is configured for the default `workers.dev` hostname and scans only the fixed `demo-project/` fixture.
+
+See [Cloudflare demo architecture, security boundaries, and deployment gates](docs/phase-demo-cloudflare.md).
+
+The CI workflow builds the Cloudflare Worker/Container configuration but never deploys it. Cloudflare account authentication, OAuth issuer/JWKS configuration, egress policy, runtime secrets, and the final `cf deploy` command remain explicit owner-controlled steps. No Cloudflare resources are created by CI.
