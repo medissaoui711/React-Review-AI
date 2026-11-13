@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { request as httpRequest } from 'node:http';
 
 import { createHttpServer } from '../server/http.mjs';
 
