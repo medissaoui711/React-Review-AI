@@ -72,9 +72,29 @@ function getMcpConfiguration() {
   }
 }
 
+function getOAuthIssuerConfiguration() {
+  const issuer = import.meta.env.VITE_OAUTH_ISSUER?.trim();
+  if (!issuer) return null;
+  try {
+    const parsed = new URL(issuer);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      parsed.href !== issuer
+    ) return null;
+    return issuer;
+  } catch {
+    return null;
+  }
+}
+
 const mcpConfiguration = getMcpConfiguration();
 const oauthClientId = import.meta.env.VITE_OAUTH_CLIENT_ID?.trim();
-const oauthConfigurationReady = mcpConfiguration.state === "configured" && Boolean(oauthClientId);
+const oauthIssuer = getOAuthIssuerConfiguration();
+const oauthConfigurationReady = mcpConfiguration.state === "configured" && Boolean(oauthClientId) && Boolean(oauthIssuer);
 const app = document.querySelector("#app");
 
 app.innerHTML = `
@@ -219,8 +239,9 @@ function removeOAuthSessionValue(key) {
 }
 
 class BrowserOAuthProvider {
-  constructor(clientId) {
+  constructor(clientId, issuer) {
     this.clientId = clientId;
+    this.issuer = issuer;
     this.accessTokens = undefined;
     this.redirectUrl = new URL(window.location.pathname, window.location.origin).href;
     this.clientMetadata = {
@@ -235,6 +256,9 @@ class BrowserOAuthProvider {
 
   clientInformation(context) {
     if (!context?.issuer || !this.clientId) return undefined;
+    if (context.issuer !== this.issuer) {
+      throw new Error("Authorization server issuer does not match the configured issuer.");
+    }
     return {
       client_id: this.clientId,
       token_endpoint_auth_method: "none",
@@ -388,7 +412,7 @@ async function connectMcp() {
   if (!oauthConfigurationReady) {
     setConnectionStatus(
       "OAuth configuration required",
-      "Configure the HTTPS MCP endpoint and the public OAuth client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
+      "Configure the HTTPS MCP endpoint, exact OAuth issuer (VITE_OAUTH_ISSUER), and public client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
       "invalid",
     );
     return;
@@ -398,7 +422,7 @@ async function connectMcp() {
   let pendingTransport;
   setConnectionStatus("Preparing secure connection", "Discovering the protected resource and preparing OAuth Authorization Code + PKCE.", "pending");
   try {
-    oauthProvider ??= new BrowserOAuthProvider(oauthClientId);
+    oauthProvider ??= new BrowserOAuthProvider(oauthClientId, oauthIssuer);
     await finishOAuthCallback(oauthProvider);
 
     const client = new Client({ name: "react-review-ai-dashboard", version: "0.6.0" });
