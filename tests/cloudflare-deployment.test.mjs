@@ -122,7 +122,7 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /endpoint\.password/);
   assert.match(main, /endpoint\.search/);
   assert.match(main, /endpoint\.hash/);
-  assert.match(main, /pathname\.replace\(\/\\\\\$\/\//);
+  assert.match(main, /!== "\/mcp"/);
   assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/);
   assert.match(main, /No access token or client secret is stored/);
   assert.doesNotMatch(main, /localStorage|sessionStorage/);
