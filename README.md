@@ -127,6 +127,18 @@ See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibili
 
 The server performs static, read-only analysis. It does not modify project files, execute project code or tests, calculate actual test coverage, or claim WCAG conformance.
 
+## Security and supply-chain automation
+
+The `.github/workflows/security-supply-chain.yml` workflow provides:
+
+- CodeQL analysis for JavaScript/TypeScript and GitHub Actions workflows.
+- Pull-request dependency review that blocks newly introduced high or critical vulnerabilities.
+- `npm audit` against the complete locked dependency tree.
+- A CycloneDX SBOM and a machine-readable license inventory generated from `package-lock.json`.
+- Workflow artifacts containing the SBOM and license inventory, retained for 30 days.
+
+GitHub Actions used by this workflow are pinned to verified full commit SHAs; Dependabot is configured to propose weekly dependency and Actions updates. The inventory reports missing license metadata as `UNKNOWN`; it does not make a legal compatibility determination. No project license has been selected or added. License policy and any exception require maintainer review. Passing scanners does not prove the absence of vulnerabilities.
+
 ## Validation
 
 GitHub Actions syntax-checks the server modules, runs security/regression tests, negotiates MCP over STDIO and Streamable HTTP, verifies the tool-level OAuth metadata and authentication challenge, tests unauthenticated discovery and authenticated calls to all four tools against a simulated provider key set, verifies that no tool exposes a project-root override, and calls each registered tool over both transports.
