@@ -17,7 +17,10 @@ test('container image runs the existing HTTP server as a non-root user', async (
 test('Cloudflare config binds one lite container to the named Durable Object', async () => {
   const config = await read('cloudflare.config.ts');
   assert.match(config, /defineContainer/);
-  assert.match(config, /instanceType: "basic"/);
+  assert.match(config, /schedulingPolicy: "durable_object"/);
+  assert.match(config, /images:\s*\{/);
+  assert.match(config, /dockerfile: "\.\/Dockerfile"/);
+  assert.doesNotMatch(config, /maxInstances|instanceType/);
   assert.match(config, /maxInstances: 1/);
   assert.match(config, /exports\.durableObject/);
   assert.match(config, /bindings\.durableObject/);
