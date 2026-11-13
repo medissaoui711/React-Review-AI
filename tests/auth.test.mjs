@@ -225,10 +225,10 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
     const metadataBody = await metadata.json();
     assert.equal(metadataBody.resource, 'http://127.0.0.1:3000/mcp');
 
-    const wrongHost = await fetch(`${base}/.well-known/oauth-protected-resource`, {
-      headers: { host: 'attacker.example.test' }
+    const wrongOrigin = await fetch(`${base}/.well-known/oauth-protected-resource`, {
+      headers: { origin: 'https://attacker.example.test' }
     });
-    assert.ok([400, 403].includes(wrongHost.status));
+    assert.equal(wrongOrigin.status, 403);
 
     const allowedBrowserOrigin = await fetch(`${base}/mcp`, {
       method: 'POST',
