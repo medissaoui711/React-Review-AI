@@ -104,7 +104,7 @@ function withCors(response: Response, origin: string | null): Response {
   });
 }
 
-function corsPreflight(request: Request, origin: string | null, expectedMethod: "GET" | "POST"): Response {
+function corsPreflight(request: Request, origin: string | null, expectedMethods: readonly ("GET" | "POST")[]): Response {
   const requestedMethod = request.headers.get("access-control-request-method")?.toUpperCase();
   const requestedHeaders = (request.headers.get("access-control-request-headers") || "")
     .split(",")
@@ -113,7 +113,7 @@ function corsPreflight(request: Request, origin: string | null, expectedMethod: 
 
   if (
     !origin ||
-    requestedMethod !== expectedMethod ||
+    !expectedMethods.includes(requestedMethod as "GET" | "POST") ||
     requestedHeaders.some((header) => !CORS_ALLOWED_HEADERS.has(header))
   ) {
     return new Response("CORS request is not allowed.", { status: 403 });
@@ -122,7 +122,7 @@ function corsPreflight(request: Request, origin: string | null, expectedMethod: 
   return withCors(new Response(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Methods": `${expectedMethod}, OPTIONS`,
+      "Access-Control-Allow-Methods": `${expectedMethods.join(", ")}, OPTIONS`,
       "Access-Control-Allow-Headers": "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Method, Mcp-Name, Mcp-Protocol-Version, Mcp-Session-Id",
       "Access-Control-Max-Age": "600",
       "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
@@ -252,7 +252,7 @@ export default {
     }
 
     if ((isMcpRoute || isResourceMetadata) && request.method.toUpperCase() === "OPTIONS") {
-      return corsPreflight(request, allowedOrigin, isMcpRoute ? "POST" : "GET");
+      return corsPreflight(request, allowedOrigin, isMcpRoute ? ["GET", "POST"] : ["GET"]);
     }
 
     // Liveness and OAuth discovery stay at the edge; neither can wake a Container.
