@@ -82,7 +82,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
   const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
-  const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 8);
+  const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 4);
   let activeRequests = 0;
   const metrics = createRuntimeMetrics();
   const isReady = async () => {
@@ -203,14 +203,15 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       const writeRequestLog = event => {
         if (logged) return;
         logged = true;
-        metrics.recordHttp({ route, status: response.statusCode, durationMs: Date.now() - startedAt, aborted: event === 'http_request_aborted' });
+        const status = event === 'http_request_aborted' && !response.headersSent ? null : response.statusCode;
+        metrics.recordHttp({ route, status, durationMs: Date.now() - startedAt, aborted: event === 'http_request_aborted' });
         console.error(JSON.stringify({
           level: 'info',
           event,
           request_id: requestId,
           method: request.method,
           route,
-          status: response.statusCode,
+          status,
           duration_ms: Math.max(0, Date.now() - startedAt)
         }));
       };
@@ -280,7 +281,8 @@ const isDirectExecution = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  const port = Number.parseInt(process.env.PORT || '3000', 10);
+  const rawPort = process.env.PORT || '3000';
+  const port = /^\\d+$/.test(rawPort) ? Number(rawPort) : Number.NaN;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
   }
