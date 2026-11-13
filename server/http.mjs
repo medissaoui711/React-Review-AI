@@ -60,13 +60,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     if (!validDnsName && !validIpv6Name) {
       throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, or wildcards.');
     }
-    const normalizedHostname = hostname.toLowerCase();
-    const originSchemes = remoteBind ? ['https'] : ['http', 'https'];
-    for (const scheme of originSchemes) allowedOrigins.push(`${scheme}://${normalizedHostname}`);
+    allowedOrigins.push(hostname.toLowerCase());
   }
   if (oauth) {
     allowedHosts.push(oauth.config.resource.hostname);
-    allowedOrigins.push(oauth.config.resource.origin);
   }
 
   const readPositiveLimit = (name, fallback) => {
