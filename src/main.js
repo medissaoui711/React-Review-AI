@@ -137,7 +137,7 @@ app.innerHTML = `
           </div>
           <span class="connection-state">${mcpConfiguration.state === "configured" ? "NOT VERIFIED" : mcpConfiguration.state === "invalid" ? "INVALID CONFIG" : "PENDING"}</span>
         </div>
-        <p class="integration-note">No access token or client secret is stored in this static frontend. The dashboard does not send requests until the OAuth browser flow, CORS policy, and MCP session lifecycle are implemented and tested.</p>
+        <p class="integration-note">No access token or client secret is stored in this static frontend. The dashboard does not send requests until the browser OAuth flow and MCP session lifecycle are implemented and tested. Browser access also requires an explicit server-side origin allowlist.</p>
       </section>
 
       <section class="workflow" id="workflow">
