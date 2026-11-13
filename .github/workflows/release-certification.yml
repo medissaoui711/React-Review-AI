@@ -1,0 +1,97 @@
+name: Release Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to certify and release (for example v0.6.0)
+        required: true
+        type: string
+      prerelease:
+        description: Mark the release as a prerelease
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-certification-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  certify-and-release:
+    name: Certify tag and publish release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout requested tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate tag and version consistency
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]
+          git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null
+          PACKAGE_VERSION="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")"
+          test "$PACKAGE_VERSION" = "${RELEASE_TAG#v}"
+          echo "Certified source tag: $RELEASE_TAG"
+          echo "Package version: $PACKAGE_VERSION"
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-fund
+
+      - name: Run syntax checks and full automated tests
+        run: |
+          npm run check
+          npm test
+
+      - name: Audit the complete locked dependency tree
+        run: npm audit --audit-level=high
+
+      - name: Generate release SBOM and license inventory
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          npm sbom --sbom-format=cyclonedx > artifacts/sbom.cdx.json
+          node scripts/generate-license-inventory.mjs
+          git archive --format=tar.gz --prefix="react-review-ai-${RELEASE_TAG}/" "$RELEASE_TAG" > artifacts/source.tar.gz
+          sha256sum artifacts/source.tar.gz artifacts/sbom.cdx.json artifacts/license-inventory.json > artifacts/SHA256SUMS
+
+      - name: Publish GitHub release with certification assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          args=(
+            "$RELEASE_TAG"
+            artifacts/source.tar.gz
+            artifacts/sbom.cdx.json
+            artifacts/license-inventory.json
+            artifacts/SHA256SUMS
+            --title "React Review AI $RELEASE_TAG"
+            --generate-notes
+            --verify-tag
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"
