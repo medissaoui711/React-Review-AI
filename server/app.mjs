@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { createReviewService } from './review.mjs';
 
-const SERVER_INFO = { name: 'react-review-ai', version: '0.4.0' };
+const SERVER_INFO = { name: 'react-review-ai', version: '0.5.0' };
 const findingSchema = z.object({
   id: z.string(), rule_id: z.string(), severity: z.enum(['Critical', 'High', 'Medium', 'Low', 'Info']),
   category: z.string(), confidence: z.enum(['low', 'medium', 'high', 'heuristic']),
@@ -78,7 +78,8 @@ export async function createServer() {
       'Findings are AST-based rule signals and require human validation.',
       'Tests are inventoried but never executed; coverage is never inferred.',
       'Accessibility checks are not a WCAG conformance assessment.',
-      'No project source code or scripts are executed or modified.'
+      'No project source code or scripts are executed or modified.',
+      'HTTP access uses OAuth bearer-token verification when configured; remote binding is denied unless explicitly enabled behind a TLS-terminating proxy.'
     ].join(' ')
   }, { maxToolInputElements: 10_000 });
 
