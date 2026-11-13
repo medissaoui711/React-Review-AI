@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export function buildLicenseInventory(lock) {
@@ -16,7 +15,6 @@ export function buildLicenseInventory(lock) {
     }))
     .sort((a, b) => a.package.localeCompare(b.package) || String(a.version).localeCompare(String(b.version)));
   return {
-    generated_at: new Date().toISOString(),
     source: 'package-lock.json',
     package_count: packages.length,
     unknown_license_count: packages.filter(item => item.license === 'UNKNOWN').length,
