@@ -5,6 +5,7 @@ export function createRuntimeMetrics() {
     http_requests_total: 0,
     http_aborted_total: 0,
     http_rate_limited_total: 0,
+    http_overloaded_total: 0,
     analysis_runs_total: 0,
     analysis_timeouts_total: 0,
     analysis_parse_errors_total: 0,
@@ -47,6 +48,10 @@ export function createRuntimeMetrics() {
 
     recordRateLimit() {
       counters.http_rate_limited_total += 1;
+    },
+
+    recordOverloaded() {
+      counters.http_overloaded_total += 1;
     },
 
     recordAnalysis({ durationMs = 0, parseErrors = 0, timedOut = false, truncated = false, findings = 0, bytesRead = 0 } = {}) {
