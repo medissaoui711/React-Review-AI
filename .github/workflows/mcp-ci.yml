@@ -2,7 +2,7 @@ name: React Review AI MCP CI
 
 on:
   push:
-    branches: [main, phase-3.2-secure-file-access, phase-3.3-streamable-http, phase-3.4-advanced-review-engine, phase-3.5-authentication-privacy]
+    branches: [main, phase-3.2-secure-file-access, phase-3.3-streamable-http, phase-3.4-advanced-review-engine, phase-3.5-authentication-privacy, phase-3.6-compatibility-chatgpt-validation]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -80,7 +80,7 @@ jobs:
         working-directory: ${{ steps.source.outputs.package_dir }}
         run: npm test
 
-      - name: MCP stdio initialize and tools/list integration test
+      - name: MCP stdio server/discover and tools/list integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
           MCP_SERVER_ENTRY: ${{ steps.source.outputs.server_entry }}
@@ -116,6 +116,7 @@ jobs:
 
           try {
             await client.connect(transport);
+            assert.equal(client.getProtocolEra(), 'modern', 'MCP server must negotiate the modern protocol era');
             const result = await client.listTools();
             const actual = result.tools.map((tool) => tool.name).sort();
             assert.deepEqual(actual, expected, 'MCP tools/list must expose all four stable tools');
@@ -129,7 +130,7 @@ jobs:
                 `Tool ${tool.name} must not expose a caller-controlled project root`);
             }
             console.log('TOOL_SCHEMAS=' + JSON.stringify(result.tools.map(({ name, inputSchema }) => ({ name, inputSchema }))));
-            console.log('MCP initialize: PASS');
+            console.log('MCP server/discover: PASS');
             console.log('MCP tools/list: PASS');
             console.log(`Registered tools: ${actual.join(', ')}`);
 
@@ -160,7 +161,7 @@ jobs:
           }
           NODE
 
-      - name: MCP Streamable HTTP initialize, tools/list, and tools/call integration test
+      - name: MCP Streamable HTTP server/discover, tools/list, and tools/call integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
           MCP_SERVER_ENTRY: ${{ steps.source.outputs.package_dir }}/server/http.mjs
@@ -197,6 +198,7 @@ jobs:
 
           try {
             await client.connect(transport);
+            assert.equal(client.getProtocolEra(), 'modern', 'MCP HTTP server must negotiate the modern protocol era');
             const result = await client.listTools();
             assert.deepEqual(result.tools.map((tool) => tool.name).sort(), expected);
             for (const tool of result.tools) {
@@ -216,14 +218,13 @@ jobs:
               assert.ok((call.content?.length || 0) > 0 || call.structuredContent);
               console.log(`HTTP tools/call ${name}: PASS`);
             }
-            console.log('MCP Streamable HTTP initialize: PASS');
+            console.log('MCP Streamable HTTP server/discover: PASS');
             console.log('MCP Streamable HTTP tools/list: PASS');
           } finally {
             await client.close();
           }
           NODE
           cat /tmp/react-review-ai-http.log
-
 
   publish-generated-files:
     needs: mcp-stdio-smoke

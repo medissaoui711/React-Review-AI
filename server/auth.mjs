@@ -85,7 +85,6 @@ export function createJwtTokenVerifier({ issuer, resource, jwks }) {
           'ERR_JWKS_MULTIPLE_MATCHING_KEYS'
         ]);
         if (!invalidTokenCodes.has(error?.code)) throw error;
-        // Never log token material or token-verification failure details.
         throw new OAuthError(OAuthErrorCode.InvalidToken, 'The access token is invalid or expired.');
       }
 
@@ -101,6 +100,10 @@ export function createJwtTokenVerifier({ issuer, resource, jwks }) {
       };
     }
   };
+}
+
+function safeErrorDescription(value) {
+  return String(value).replace(/[^a-zA-Z0-9 .,:;_'-]/g, ' ').slice(0, 180);
 }
 
 export function createOAuthRuntime(env = process.env, { jwks } = {}) {
@@ -134,6 +137,10 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
   return Object.freeze({
     config,
     authenticate,
+    challenge(errorCode = 'invalid_token', description = 'Authentication is required.') {
+      const allowed = errorCode === 'insufficient_scope' ? 'insufficient_scope' : 'invalid_token';
+      return `Bearer resource_metadata="${config.metadataUrl}", scope="${config.scope}", error="${allowed}", error_description="${safeErrorDescription(description)}"`;
+    },
     metadataResponse() {
       return Response.json(metadata, {
         headers: {

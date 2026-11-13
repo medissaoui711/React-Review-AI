@@ -42,7 +42,7 @@ REACT_REVIEW_ROOT=/absolute/path/to/react-project npm run start:http
 
 The HTTP transport listens on `127.0.0.1` by default and exposes `http://127.0.0.1:3000/mcp`. Set `PORT` to change the port. It uses the official MCP `createMcpHandler` entry with stateless request handling; each request receives a fresh MCP server instance and no protocol session is retained.
 
-The endpoint validates `Host` and any supplied `Origin`, accepts POST requests only, and rejects standalone GET and DELETE session operations. Local-only mode remains available for trusted local integrations. When OAuth is configured, every MCP HTTP request requires a valid bearer token with the configured review scope. Remote binding is denied unless explicitly enabled and configured behind a TLS-terminating reverse proxy.
+The endpoint validates `Host` and any supplied `Origin`, accepts POST requests only, and rejects standalone GET and DELETE session operations. Local-only mode remains available for trusted local integrations. When OAuth is configured, `initialize` and `tools/list` remain available without a token so clients can discover the tool catalog; each `tools/call` is independently verified against the configured issuer, audience, expiry, and review scope. Tool descriptors advertise OAuth security schemes, and unauthenticated or insufficient-scope tool results carry the `mcp/www_authenticate` metadata challenge used by ChatGPT to start or step up OAuth linking. STDIO remains local and keeps its existing trusted-environment behavior. Remote binding is denied unless explicitly enabled and configured behind a TLS-terminating reverse proxy.
 
 
 ## HTTP OAuth resource-server configuration
@@ -99,6 +99,10 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 - STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
 
+## Provider-neutral OAuth compatibility
+
+See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibility.md) for the external identity-provider contract, PKCE/resource requirements, refresh-token expectations, and the boundary between simulated tests and live ChatGPT validation.
+
 ## MCP tools
 
 - `review_project`
@@ -116,7 +120,7 @@ The server performs static, read-only analysis. It does not modify project files
 
 ## Validation
 
-GitHub Actions syntax-checks the server modules, runs security/regression and HTTP transport tests, negotiates MCP over STDIO and Streamable HTTP, verifies that no tool exposes a project-root override, and calls each registered tool over both transports.
+GitHub Actions syntax-checks the server modules, runs security/regression tests, negotiates MCP over STDIO and Streamable HTTP, verifies the tool-level OAuth metadata and authentication challenge, tests unauthenticated discovery and authenticated calls to all four tools against a simulated provider key set, verifies that no tool exposes a project-root override, and calls each registered tool over both transports.
 
 ## AST analysis and result contracts
 

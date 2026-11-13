@@ -214,7 +214,7 @@ test('request body limit rejects oversized declared and streamed bodies', async 
   assert.equal(bounded.status, 413);
 });
 
-test('HTTP endpoint exposes guarded resource metadata and challenges unauthenticated MCP calls', async () => {
+test('HTTP endpoint exposes resource metadata and permits unauthenticated MCP discovery', async () => {
   const { jwks, privateKey } = await makeKeys();
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-oauth-http-'));
   const root = path.join(parent, 'project');
@@ -247,16 +247,14 @@ test('HTTP endpoint exposes guarded resource metadata and challenges unauthentic
       headers: { origin: 'https://client.example.test', 'content-type': 'application/json' },
       body: '{}'
     });
-    assert.equal(allowedBrowserOrigin.status, 401);
-    assert.match(allowedBrowserOrigin.headers.get('www-authenticate') || '', /resource_metadata=/);
+    assert.notEqual(allowedBrowserOrigin.status, 401);
 
     const unauthenticated = await fetch(`${base}/mcp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: '{}'
     });
-    assert.equal(unauthenticated.status, 401);
-    assert.match(unauthenticated.headers.get('www-authenticate') || '', /resource_metadata=/);
+    assert.notEqual(unauthenticated.status, 401);
 
     const previousRoot = process.env.REACT_REVIEW_ROOT;
     process.env.REACT_REVIEW_ROOT = root;
