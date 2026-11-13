@@ -1,0 +1,6 @@
+# Require the repository owner to review security-sensitive changes.
+* @medissaoui711
+/.github/ @medissaoui711
+/server/ @medissaoui711
+/package.json @medissaoui711
+/package-lock.json @medissaoui711
