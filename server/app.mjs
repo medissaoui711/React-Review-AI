@@ -84,7 +84,7 @@ function authRequiredResult(oauth, authInfo) {
   const insufficientScope = authInfo?.authFailure?.errorCode === 'insufficient_scope';
   const error = insufficientScope ? 'insufficient_scope' : 'invalid_token';
   const description = insufficientScope
-    ? 'The access token does not include the required review:read scope.'
+    ? 'The access token does not include the required scope.'
     : 'Authentication is required. Connect an OAuth account and retry this tool.';
   const challenge = oauth.challenge(error, description);
   return {
