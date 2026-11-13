@@ -122,7 +122,8 @@ test('Cloudflare Worker enforces explicit-origin CORS for browser MCP and OAuth 
   assert.match(worker, /Access-Control-Allow-Origin/);
   assert.match(worker, /Access-Control-Expose-Headers.*WWW-Authenticate.*Mcp-Session-Id/);
   assert.match(worker, /function corsPreflight/);
-  assert.match(worker, /requestedMethod !== "POST"/);
+  assert.match(worker, /requestedMethod !== expectedMethod/);
+  assert.match(worker, /isMcpRoute \? "POST" : "GET"/);
   assert.match(worker, /requestedHeaders\.some\(\(header\) => !CORS_ALLOWED_HEADERS\.has\(header\)\)/);
   assert.match(worker, /isResourceMetadata/);
   assert.match(worker, /return respond\(await stub\.fetch\(forwarded\)\)/);
