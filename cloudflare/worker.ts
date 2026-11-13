@@ -53,6 +53,81 @@ function unavailable(message: string, status = 503): Response {
   });
 }
 
+const CORS_ALLOWED_HEADERS = new Set([
+  "accept",
+  "authorization",
+  "content-type",
+  "last-event-id",
+  "mcp-protocol-version",
+  "mcp-session-id",
+]);
+
+function resolveAllowedOrigin(origin: string, env: Env): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return null;
+  }
+
+  const allowedHosts = (env.MCP_ALLOWED_ORIGIN_HOSTS || "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.origin !== origin ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    !allowedHosts.includes(parsed.hostname.toLowerCase())
+  ) {
+    return null;
+  }
+  return parsed.origin;
+}
+
+function withCors(response: Response, origin: string | null): Response {
+  if (!origin) return response;
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Expose-Headers", "WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version");
+  const vary = headers.get("Vary");
+  headers.set("Vary", vary ? `${vary}, Origin` : "Origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function corsPreflight(request: Request, origin: string | null): Response {
+  const requestedMethod = request.headers.get("access-control-request-method")?.toUpperCase();
+  const requestedHeaders = (request.headers.get("access-control-request-headers") || "")
+    .split(",")
+    .map((header) => header.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    !origin ||
+    requestedMethod !== "POST" ||
+    requestedHeaders.some((header) => !CORS_ALLOWED_HEADERS.has(header))
+  ) {
+    return new Response("CORS request is not allowed.", { status: 403 });
+  }
+
+  return withCors(new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Protocol-Version, Mcp-Session-Id",
+      "Access-Control-Max-Age": "600",
+      "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+    },
+  }), origin);
+}
+
 function publicMetadata(request: Request, env: Env): Response {
   const resource = new URL("/mcp", request.url).href;
   const metadata = {
@@ -164,6 +239,19 @@ export class ReactReviewContainer extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const isMcpRoute = url.pathname === "/mcp";
+    const isResourceMetadata = url.pathname === "/.well-known/oauth-protected-resource";
+    const originHeader = request.headers.get("origin");
+    const allowedOrigin = originHeader ? resolveAllowedOrigin(originHeader, env) : null;
+    const respond = (response: Response) => withCors(response, allowedOrigin);
+
+    if ((isMcpRoute || isResourceMetadata) && originHeader && !allowedOrigin) {
+      return new Response("Origin is not allowed.", { status: 403, headers: { "Cache-Control": "no-store" } });
+    }
+
+    if ((isMcpRoute || isResourceMetadata) && request.method.toUpperCase() === "OPTIONS") {
+      return corsPreflight(request, allowedOrigin);
+    }
 
     // Liveness and OAuth discovery stay at the edge; neither can wake a Container.
     if (url.pathname === "/healthz") {
@@ -173,23 +261,23 @@ export default {
       return Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    if (url.pathname === "/.well-known/oauth-protected-resource") {
+    if (isResourceMetadata) {
       if (request.method.toUpperCase() !== "GET") {
-        return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET" } });
+        return respond(new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET" } }));
       }
       if (!env.OAUTH_ISSUER_URL || !env.OAUTH_JWKS_URL) {
-        return unavailable("Public demo authentication is not configured.");
+        return respond(unavailable("Public demo authentication is not configured."));
       }
-      return publicMetadata(request, env);
+      return respond(publicMetadata(request, env));
     }
 
-    if (url.pathname !== "/mcp") return new Response("Not Found", { status: 404 });
+    if (!isMcpRoute) return new Response("Not Found", { status: 404 });
     if (request.method.toUpperCase() !== "POST") {
-      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
+      return respond(new Response("Method Not Allowed", { status: 405, headers: { Allow: "POST, OPTIONS" } }));
     }
 
     if (!env.OAUTH_ISSUER_URL || !env.OAUTH_JWKS_URL) {
-      return unavailable("Public demo authentication is not configured.");
+      return respond(unavailable("Public demo authentication is not configured."));
     }
 
     const forwarded = new Request(request);
@@ -198,6 +286,6 @@ export default {
     if (clientIp) forwarded.headers.set("x-mcp-rate-limit-key", clientIp);
 
     const stub = env.REACT_REVIEW_CONTAINER.getByName("react-review-ai-demo");
-    return stub.fetch(forwarded);
+    return respond(await stub.fetch(forwarded));
   },
 };
