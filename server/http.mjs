@@ -47,7 +47,7 @@ export function createHttpServer(env = process.env) {
 
   const readPositiveLimit = (name, fallback) => {
     const raw = env[name] || String(fallback);
-    if (!/^\\d+$/.test(raw) || Number(raw) < 1) throw new Error(`${name} must be a positive integer.`);
+    if (!/^\d+$/.test(raw) || Number(raw) < 1) throw new Error(`${name} must be a positive integer.`);
     return Number(raw);
   };
   const rateLimit = createRequestRateLimiter({
