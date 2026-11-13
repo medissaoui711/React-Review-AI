@@ -134,7 +134,7 @@ The manual workflow `.github/workflows/release-certification.yml` certifies an e
 
 ## Production certification status
 
-Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector interoperability, and deployment-level monitoring remain owner-controlled gates. See [Phase 3.7 owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
+Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector interoperability, and deployment-level monitoring remain owner-controlled gates. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
 
 ## HTTP observability and privacy
 
