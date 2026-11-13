@@ -114,6 +114,21 @@ test('D5 CI trigger is branch-scoped and remains non-deploying', async () => {
 });
 
 
+test('Cloudflare Worker enforces explicit-origin CORS for browser MCP and OAuth metadata requests', async () => {
+  const worker = await read('cloudflare/worker.ts');
+  assert.match(worker, /function resolveAllowedOrigin/);
+  assert.match(worker, /parsed\.protocol !== "https:"/);
+  assert.match(worker, /allowedHosts\.includes\(parsed\.hostname\.toLowerCase\(\)\)/);
+  assert.match(worker, /Access-Control-Allow-Origin/);
+  assert.match(worker, /Access-Control-Expose-Headers.*WWW-Authenticate.*Mcp-Session-Id/);
+  assert.match(worker, /function corsPreflight/);
+  assert.match(worker, /requestedMethod !== "POST"/);
+  assert.match(worker, /requestedHeaders\.some\(\(header\) => !CORS_ALLOWED_HEADERS\.has\(header\)\)/);
+  assert.match(worker, /isResourceMetadata/);
+  assert.match(worker, /return respond\(await stub\.fetch\(forwarded\)\)/);
+  assert.doesNotMatch(worker, /Access-Control-Allow-Origin["']?,\s*["']\*["']/);
+});
+
 test('static dashboard exposes safe MCP configuration readiness without claiming live connectivity', async () => {
   const main = await read('src/main.js');
   assert.match(main, /VITE_MCP_ENDPOINT/);
