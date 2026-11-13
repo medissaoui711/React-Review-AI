@@ -429,6 +429,23 @@ test('HTTP endpoint exposes resource metadata and permits unauthenticated MCP di
     });
     assert.notEqual(allowedBrowserOrigin.status, 401);
 
+    const browserToolCall = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: {
+        origin: 'https://client.example.test',
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'tools/call',
+        params: { name: 'review_project', arguments: {} }
+      })
+    });
+    assert.equal(browserToolCall.status, 401);
+    assert.match(browserToolCall.headers.get('www-authenticate') || '', /resource_metadata=/);
+
     const unauthenticated = await fetch(`${base}/mcp`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
