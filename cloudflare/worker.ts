@@ -111,7 +111,7 @@ function corsPreflight(request: Request, origin: string | null, expectedMethod: 
 
   if (
     !origin ||
-    requestedMethod !== "POST" ||
+    requestedMethod !== expectedMethod ||
     requestedHeaders.some((header) => !CORS_ALLOWED_HEADERS.has(header))
   ) {
     return new Response("CORS request is not allowed.", { status: 403 });
