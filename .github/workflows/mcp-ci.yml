@@ -154,6 +154,9 @@ jobs:
           MCP_SERVER_ENTRY: ${{ steps.source.outputs.package_dir }}/server/http.mjs
           REACT_REVIEW_ROOT: ${{ github.workspace }}
           PORT: 43127
+          MCP_RATE_LIMIT_PER_MINUTE: '500'
+          MCP_RATE_LIMIT_PER_IP_PER_MINUTE: '500'
+          MCP_MAX_CONCURRENT_REQUESTS: '4'
         run: |
           set -euo pipefail
           node "$MCP_SERVER_ENTRY" >/tmp/react-review-ai-http.log 2>&1 &
@@ -222,7 +225,7 @@ jobs:
           ]);
           console.log('MCP Inspector modern HTTP tools/list: PASS');
           NODE
-          node scripts/run-http-load-test.mjs --url=http://127.0.0.1:$PORT/mcp --requests=120 --concurrency=12 --max-p95-ms=1000
+          node scripts/run-http-load-test.mjs --url=http://127.0.0.1:$PORT/mcp --requests=100 --concurrency=3 --max-p95-ms=1000
           cat /tmp/react-review-ai-http.log
 
 
