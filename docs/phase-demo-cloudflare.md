@@ -30,7 +30,7 @@ The current Cloudflare configuration uses the direct Durable Object Container AP
 - The Cloudflare-to-container request host is explicitly allowed through `MCP_ALLOWED_HOSTS=container`.
 - OAuth issuer/JWKS values and allowed Origin hostnames are runtime configuration, not committed secrets.
 
-The container currently requires outbound network access for remote JWKS retrieval. Before a public deployment, the owner must approve the egress policy and the permitted identity-provider hostname(s). No access token, signing key, or client secret belongs in this repository.
+Container public Internet access is disabled. Before startup, the Durable Object registers an HTTPS outbound intercept for the exact hostname and path in `OAUTH_JWKS_URL`; a WorkerEntrypoint verifies the destination and forwards only that JWKS GET request, with redirects left manual. The Node process trusts Cloudflare's container interception CA through `NODE_EXTRA_CA_CERTS`. No other outbound destination is allowed. The OAuth issuer/JWKS URLs and their host must be reviewed before deployment. No access token, signing key, or client secret belongs in this repository.
 
 ## Local and CI checks
 
