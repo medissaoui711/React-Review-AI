@@ -1,6 +1,6 @@
 ---
 name: react-code-review
-description: Comprehensive read-only review of React architecture, components, hooks, performance, TypeScript, security, and maintainability.
+description: AST-backed read-only review of React architecture, components, hooks, performance, TypeScript, security, and maintainability.
 ---
 # React Code Review
 1. Identify React version, framework, TypeScript, package manager, and project structure.

@@ -45,7 +45,7 @@ test('reviewFile accepts a source file inside the configured project root', asyn
     const result = await review.reviewFile('src/Example.jsx');
 
     assert.equal(result.file, 'src/Example.jsx');
-    assert.equal(result.mode, 'read-only heuristic');
+    assert.equal(result.mode, 'read-only AST-based static analysis');
     assert.ok(Array.isArray(result.findings));
     assert.equal(await readFile(path.join(root, 'src', 'Example.jsx'), 'utf8'), source);
   });
