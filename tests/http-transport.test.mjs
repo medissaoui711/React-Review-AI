@@ -35,6 +35,10 @@ test('HTTP server applies explicit keep-alive and accepts a shutdown timeout', a
     MCP_SHUTDOWN_TIMEOUT_MS: '2500'
   });
   try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
     assert.equal(runtime.server.keepAliveTimeout, 5000);
     assert.equal(runtime.server.maxRequestsPerSocket, 1000);
   } finally {
