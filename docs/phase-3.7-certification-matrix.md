@@ -7,13 +7,13 @@
 
 | Work package | Evidence added on branch | Current status | Remaining evidence / gate |
 |---|---|---|---|
-| 3.7.1 Governance | SECURITY.md, CODEOWNERS, PR template, frozen spec, owner-action checklist | IMPLEMENTED | Main ruleset/branch protection requires owner settings authorization |
-| 3.7.2 Supply chain | Dependabot, immutable action pins, dependency review workflow, npm audit gate | IMPLEMENTED / NOT RUN | Observe successful branch CI and triage actual advisories |
-| 3.7.3 Security scanning and SBOM | CodeQL JS/TS + Actions, CycloneDX generation, license inventory, artifact upload | IMPLEMENTED / NOT RUN | Observe scanner results; secret scanning/push protection remain owner settings |
-| 3.7.4 Runtime | /healthz, /readyz, bounded graceful shutdown, strict port/connection limits, remote Host/Origin hardening | IMPLEMENTED / NOT RUN | Run HTTP regression tests and validate in a real reverse-proxy deployment |
-| 3.7.5 OAuth lifecycle | JWKS key-rotation/outage tests, not-before validation, retryable 503 for JWKS infrastructure failures | IMPLEMENTED / NOT RUN | Run tests; live provider, revocation and refresh validation remain external |
-| 3.7.6 Observability | Correlation IDs, sanitized JSON request logs, low-cardinality in-process metrics snapshot | IMPLEMENTED / NOT RUN | Run tests; exporter, alerting, retention and access policy remain deployment work |
-| 3.7.7 Resilience and performance | AST worker-thread isolation, enforceable parser deadline, HTTP concurrency cap, timeout tests, synthetic 100-file CI benchmark | IMPLEMENTED / NOT RUN | Observe benchmark artifact; deployment load/soak tests and shared multi-instance rate limits remain |
+| 3.7.1 Governance | SECURITY.md, CODEOWNERS, PR template, frozen spec, owner-action checklist | IMPLEMENTED | Main ruleset/branch protection and secret-scanning settings require owner authorization |
+| 3.7.2 Supply chain | Dependabot, immutable action pins, dependency review workflow, npm audit gate; Zod upgraded to 4.6.7 | PASS — run 90: npm audit found 0 vulnerabilities | Dependency Review awaits PR event; keep weekly update monitoring |
+| 3.7.3 Security scanning and SBOM | CodeQL JS/TS + Actions, CycloneDX 1.5 SBOM, license inventory and uploaded artifact | PASS — run 90: both CodeQL jobs and SBOM/license artifact succeeded; 22 packages, 0 unknown licenses | Dependency Review awaits PR; secret scanning/push protection remain owner settings |
+| 3.7.4 Runtime | /healthz, /readyz, bounded graceful shutdown, strict port/connection limits, remote Host/Origin hardening | PASS — run 215: HTTP runtime regression suite passed | Real reverse-proxy deployment validation remains external |
+| 3.7.5 OAuth lifecycle | JWKS key-rotation/outage tests, not-before validation, retryable 503 for JWKS infrastructure failures | PASS — run 215: automated OAuth lifecycle tests passed | Live provider, revocation and refresh validation remain external |
+| 3.7.6 Observability | Correlation IDs, sanitized JSON request logs, low-cardinality in-process metrics snapshot | PASS — run 215: logging and metrics regression tests passed | Exporter, alerting, retention and access policy remain deployment work |
+| 3.7.7 Resilience and performance | AST worker-thread isolation, enforceable parser deadline, HTTP concurrency cap, timeout tests, synthetic 100-file CI benchmark | PASS — run 215: 100 files / 102,400 bytes / 100 findings / 0 parse errors / 162.34 ms / no timeout or truncation | Deployment load/soak tests and shared multi-instance rate limits remain |
 | 3.7.8 Release engineering | Manual tag certification workflow, source archive, SBOM, license inventory, SHA-256 manifest, generated release notes | IMPLEMENTED / NOT RUN | No tag or release created; owner must explicitly dispatch after version/tag approval |
 
 ## External gates
@@ -31,6 +31,6 @@
 ## Evidence integrity
 
 - No test result is marked PASS until a workflow or local test execution result is observed.
-- CI workflows are configured to run on the feature branch, but the GitHub Actions run list is not currently exposed by the connected repository actions used in this session. An empty commit-status response is not proof that CI passed or failed.
+- MCP CI run 215 passed 54/54 tests, STDIO and HTTP integration, all four tool calls, and the synthetic performance benchmark. Security workflow run 90 passed both CodeQL analyses and npm audit, and uploaded the CycloneDX/license artifact. Dependency Review was skipped on push and will run when a PR is opened. An empty commit-status response is not proof that CI passed or failed.
 - No production release, tag, live OAuth connection, or ChatGPT connection has been created or claimed.
 - main must remain at the base SHA until the owner reviews the completed PR and explicitly approves merge.
