@@ -85,9 +85,10 @@ async function connectClient(endpoint, authorization) {
   });
   const client = new Client(
     { name: 'react-review-ai-phase-3-6-test', version: '1.0.0' },
-    { versionNegotiation: { mode: 'auto' } }
+    { versionNegotiation: { mode: { pin: '2026-07-28' } } }
   );
   await client.connect(transport);
+  assert.equal(client.getProtocolEra(), 'modern');
   return client;
 }
 
