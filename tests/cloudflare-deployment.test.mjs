@@ -38,6 +38,10 @@ test('public Worker exposes only the intended MCP and health routes', async () =
   assert.match(worker, /headers\.delete\("x-mcp-rate-limit-key"\)/);
   assert.match(worker, /cf-connecting-ip/);
   assert.match(worker, /setInactivityTimeout/);
+  assert.match(worker, /interceptOutboundHttps/);
+  assert.match(worker, /enableInternet: false/);
+  assert.match(worker, /class JwksEgress extends WorkerEntrypoint/);
+  assert.doesNotMatch(worker, /enableInternet: true/);
   assert.match(worker, /getTcpPort\(PORT\)\.fetch/);
   assert.match(worker, /REACT_REVIEW_ROOT: "\/app\/demo-project"/);
 });
