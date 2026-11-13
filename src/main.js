@@ -375,10 +375,8 @@ class BrowserOAuthProvider {
 let mcpClient;
 let mcpTransport;
 let oauthProvider;
-let discoveredRequiredTools = false;
-
 const workflowStatuses = {
-  configure: mcpConfiguration.state === "configured" ? "complete" : "blocked",
+  configure: oauthConfigurationReady ? "complete" : "blocked",
   connect: "pending",
   discover: "pending",
   analyze: "pending",
@@ -412,10 +410,12 @@ function setWorkflowStep(name, status, detail) {
 
 setWorkflowStep(
   "configure",
-  mcpConfiguration.state === "configured" ? "complete" : "blocked",
-  mcpConfiguration.state === "configured"
-    ? "MCP endpoint format is valid. OAuth settings and live connectivity still require verification."
-    : "Set a valid HTTPS MCP endpoint ending in /mcp before continuing.",
+  oauthConfigurationReady ? "complete" : "blocked",
+  oauthConfigurationReady
+    ? "Endpoint, OAuth issuer, and public client ID are configured. Live connectivity still requires verification."
+    : mcpConfiguration.state === "configured"
+      ? "Endpoint format is valid, but the exact OAuth issuer and public client ID must also be configured."
+      : "Set a valid HTTPS MCP endpoint ending in /mcp before continuing.",
 );
 
 const connectionCard = document.querySelector(".connection-card");
@@ -524,7 +524,6 @@ async function connectMcp() {
     }
     mcpClient = client;
     mcpTransport = pendingTransport;
-    discoveredRequiredTools = true;
     setWorkflowStep("connect", "complete", "The MCP transport handshake completed successfully.");
     setWorkflowStep("discover", "complete", "All four required read-only tools were found on the server.");
     runButtons.forEach((button) => {
@@ -558,7 +557,6 @@ async function disconnectMcp() {
   mcpClient = undefined;
   mcpTransport = undefined;
   oauthProvider = undefined;
-  discoveredRequiredTools = false;
   setWorkflowStep("connect", "pending", "Connect the browser session using OAuth Authorization Code + PKCE.");
   setWorkflowStep("discover", "pending", "Tool discovery runs after the next successful MCP handshake.");
   setWorkflowStep("analyze", "pending", "Choose a review tool after the required tools are discovered.");
