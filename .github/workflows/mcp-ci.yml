@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   mcp-stdio-smoke:
@@ -220,8 +220,23 @@ jobs:
           NODE
           cat /tmp/react-review-ai-http.log
 
-      - name: Commit source tree and reproducible dependency lock
-        if: success() && github.event_name == 'push'
+
+  publish-generated-files:
+    needs: mcp-stdio-smoke
+    if: success() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate reproducible dependency lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit generated source and lock files to the triggering branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
