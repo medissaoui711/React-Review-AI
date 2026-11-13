@@ -42,8 +42,8 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const allowedOrigins = [...localhostAllowedOrigins()];
   const configuredOrigins = (env.MCP_ALLOWED_ORIGIN_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
   for (const hostname of configuredOrigins) {
-    const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
-    const validIpv6Name = /^\\[[0-9a-f:]+\\]$/i.test(hostname);
+    const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
+    const validIpv6Name = /^\[[0-9a-f:]+\]$/i.test(hostname);
     if (!validDnsName && !validIpv6Name) {
       throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, paths, or wildcards.');
     }
