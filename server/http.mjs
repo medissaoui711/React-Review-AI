@@ -9,30 +9,62 @@ import {
 } from '@modelcontextprotocol/server';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
+import {
+  createOAuthRuntime,
+  createRequestRateLimiter,
+  enforceRequestBodyLimit
+} from './auth.mjs';
 
 const MCP_PATH = '/mcp';
-const HOST_ALLOWLIST = localhostAllowedHostnames();
-const ORIGIN_ALLOWLIST = localhostAllowedOrigins();
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
-/**
- * Create a local-only, stateless Streamable HTTP endpoint.
- * The SDK creates a fresh MCP server for each request; no protocol sessions
- * or cross-request project state are retained.
- */
-export function createHttpServer() {
+function isLoopback(host) {
+  return LOOPBACK_HOSTS.has(host.replace(/^\[|\]$/g, '').toLowerCase());
+}
+
+export function createHttpServer(env = process.env) {
+  const bindHost = env.MCP_HTTP_HOST || '127.0.0.1';
+  const allowRemote = env.MCP_HTTP_ALLOW_REMOTE === 'true';
+  const remoteBind = !isLoopback(bindHost);
+  const oauth = createOAuthRuntime(env);
+
+  if (remoteBind && !allowRemote) {
+    throw new Error('Non-loopback HTTP binding requires MCP_HTTP_ALLOW_REMOTE=true.');
+  }
+  if (allowRemote && (!oauth || env.MCP_TRUST_PROXY_TLS !== 'true')) {
+    throw new Error('Remote HTTP requires OAuth configuration and MCP_TRUST_PROXY_TLS=true for a TLS-terminating reverse proxy.');
+  }
+  if (allowRemote && oauth.config.resource.protocol !== 'https:') {
+    throw new Error('Remote MCP_PUBLIC_URL must use HTTPS.');
+  }
+
+  const allowedHosts = new Set(localhostAllowedHostnames());
+  const allowedOrigins = new Set(localhostAllowedOrigins());
+  if (oauth) {
+    allowedHosts.add(oauth.config.resource.hostname);
+    allowedOrigins.add(oauth.config.resource.origin);
+  }
+
+  const rateLimit = createRequestRateLimiter({
+    windowMs: 60_000,
+    maxRequests: Number.parseInt(env.MCP_RATE_LIMIT_PER_MINUTE || '120', 10)
+  });
   const mcp = createMcpHandler(createServer, { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
       const url = new URL(request.url);
+      if (oauth && url.pathname === '/.well-known/oauth-protected-resource') {
+        return oauth.metadataResponse();
+      }
       if (url.pathname !== MCP_PATH) {
         return new Response('Not Found', { status: 404 });
       }
 
-      const hostRejection = hostHeaderValidationResponse(request, HOST_ALLOWLIST);
+      const hostRejection = hostHeaderValidationResponse(request, allowedHosts);
       if (hostRejection) return hostRejection;
 
-      const originRejection = originValidationResponse(request, ORIGIN_ALLOWLIST);
+      const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
 
       if (request.method.toUpperCase() !== 'POST') {
@@ -42,11 +74,26 @@ export function createHttpServer() {
         });
       }
 
-      return mcp.fetch(request);
+      const rateLimitResponse = rateLimit(request);
+      if (rateLimitResponse) return rateLimitResponse;
+
+      const boundedRequest = enforceRequestBodyLimit(request);
+      if (boundedRequest instanceof Response) return boundedRequest;
+      const safeRequest = boundedRequest || request;
+
+      if (oauth) {
+        const authInfo = await oauth.authenticate(safeRequest);
+        if (authInfo instanceof Response) return authInfo;
+        return mcp.fetch(safeRequest, { authInfo });
+      }
+      return mcp.fetch(safeRequest);
     }
   };
 
-  const server = createNodeServer(toNodeHandler(guardedHandler));
+  const server = createNodeServer(
+    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000 },
+    toNodeHandler(guardedHandler)
+  );
 
   return {
     server,
@@ -71,8 +118,9 @@ if (isDirectExecution) {
   }
 
   const runtime = createHttpServer();
-  runtime.server.listen(port, '127.0.0.1', () => {
-    console.error(`React Review AI Streamable HTTP listening at http://127.0.0.1:${port}${MCP_PATH}`);
+  const host = process.env.MCP_HTTP_HOST || '127.0.0.1';
+  runtime.server.listen(port, host, () => {
+    console.error(`React Review AI Streamable HTTP listening at http://${host}:${port}${MCP_PATH}`);
   });
 
   const shutdown = async () => {
