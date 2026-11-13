@@ -51,8 +51,8 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     throw new Error('Remote MCP_PUBLIC_URL must use HTTPS.');
   }
 
-  const allowedHosts = [...localhostAllowedHostnames()];
-  const allowedOrigins = [...localhostAllowedOrigins()];
+  const allowedHosts = remoteBind ? [] : [...localhostAllowedHostnames()];
+  const allowedOrigins = remoteBind ? [] : [...localhostAllowedOrigins()];
   const configuredOrigins = (env.MCP_ALLOWED_ORIGIN_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
   for (const hostname of configuredOrigins) {
     const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
