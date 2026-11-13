@@ -79,7 +79,7 @@ test('demo fixture is a fixed read-only React review target', async () => {
 
 test('Cloudflare deployment remains manual and is not triggered by CI', async () => {
   const workflow = await read('.github/workflows/mcp-ci.yml');
-  assert.match(workflow, /branches: \[main, phase-3\.2-secure-file-access/);
+  assert.match(workflow, /branches: \[main, phase-demo-cloudflare-d4-readiness, phase-3\.2-secure-file-access/);
   assert.match(workflow, /phase-demo-cloudflare-d4-readiness/);
   assert.match(workflow, /cloudflare:build/);
   assert.doesNotMatch(workflow, /cf deploy/);
