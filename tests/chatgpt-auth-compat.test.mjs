@@ -61,6 +61,7 @@ async function withOAuthServer(run) {
     const address = runtime.server.address();
     await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, ...identity });
   } finally {
+    runtime.server.closeAllConnections();
     await runtime.close();
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
@@ -89,7 +90,7 @@ const toolCalls = [
   ['audit_accessibility', {}]
 ];
 
-test('ChatGPT-compatible tool metadata and OAuth challenges support discovery before authentication', async () => {
+test('ChatGPT-compatible tool metadata and OAuth challenges support discovery before authentication', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint }) => {
     const client = await connectClient(endpoint);
     try {
@@ -116,7 +117,7 @@ test('ChatGPT-compatible tool metadata and OAuth challenges support discovery be
   });
 });
 
-test('valid provider-neutral OAuth access token authorizes all four read-only tools', async () => {
+test('valid provider-neutral OAuth access token authorizes all four read-only tools', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint, token }) => {
     const client = await connectClient(endpoint, token);
     try {
@@ -133,7 +134,7 @@ test('valid provider-neutral OAuth access token authorizes all four read-only to
   });
 });
 
-test('invalid bearer token does not block initialize or tools/list but produces an invalid-token tool challenge', async () => {
+test('invalid bearer token does not block initialize or tools/list but produces an invalid-token tool challenge', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint }) => {
     const client = await connectClient(endpoint, 'not-a-valid-jwt');
     try {
