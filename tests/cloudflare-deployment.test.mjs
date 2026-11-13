@@ -79,8 +79,28 @@ test('demo fixture is a fixed read-only React review target', async () => {
 
 test('Cloudflare deployment remains manual and is not triggered by CI', async () => {
   const workflow = await read('.github/workflows/mcp-ci.yml');
-  assert.match(workflow, /branches: \[main, phase-demo-cloudflare-d4-readiness, phase-3\.2-secure-file-access/);
+  assert.match(workflow, /branches: \[main, phase-demo-cloudflare-d4-readiness, phase-demo-cloudflare-d5-deployment-readiness, phase-3\.2-secure-file-access/);
   assert.match(workflow, /phase-demo-cloudflare-d4-readiness/);
+  assert.match(workflow, /cloudflare:build/);
+  assert.doesNotMatch(workflow, /cf deploy/);
+});
+
+
+test('D5 documentation accurately describes the public route boundary and owner-controlled deployment gates', async () => {
+  const doc = await read('docs/phase-demo-cloudflare.md');
+  assert.match(doc, /The public Worker exposes only/);
+  assert.match(doc, /readyz.*internal Container probe/);
+  assert.match(doc, /Workers Paid and Cloudflare Containers/);
+  assert.match(doc, /exact public resource URL ending in/);
+  assert.match(doc, /Never commit access tokens, client secrets, private signing keys/);
+  assert.match(doc, /separate owner approval/);
+  assert.match(doc, /D6 live OAuth\/ChatGPT certification/);
+  assert.doesNotMatch(doc, /Worker exposes only.*GET `\/readyz`/);
+});
+
+test('D5 CI trigger is branch-scoped and remains non-deploying', async () => {
+  const workflow = await read('.github/workflows/mcp-ci.yml');
+  assert.match(workflow, /phase-demo-cloudflare-d5-deployment-readiness/);
   assert.match(workflow, /cloudflare:build/);
   assert.doesNotMatch(workflow, /cf deploy/);
 });
