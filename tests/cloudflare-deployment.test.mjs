@@ -165,6 +165,21 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
 });
 
 
+test('workflow section presents five stages and updates only from verified MCP events', async () => {
+  const main = await read('src/main.js');
+  for (const step of ['configure', 'connect', 'discover', 'analyze', 'results']) {
+    assert.match(main, new RegExp(`data-workflow-step="${step}"`));
+  }
+  assert.match(main, /aria-live="polite" id="workflow-live-status"/);
+  assert.match(main, /function setWorkflowStep\(name, status, detail\)/);
+  assert.match(main, /setWorkflowStep\("discover", "complete"/);
+  assert.match(main, /setWorkflowStep\("analyze", "complete"/);
+  assert.match(main, /setWorkflowStep\("results", "complete"/);
+  assert.match(main, /READ-ONLY BY DESIGN/);
+  assert.match(main, /not a full WCAG certification/);
+  assert.doesNotMatch(main, /workflow-badge/);
+});
+
 test('browser OAuth provider preserves only short-lived PKCE state across redirects', async () => {
   const main = await read('src/main.js');
   const start = main.indexOf('const OAUTH_TRANSACTION_TTL_MS');
