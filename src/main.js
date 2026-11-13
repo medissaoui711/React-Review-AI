@@ -241,7 +241,7 @@ class BrowserOAuthProvider {
   }
 
   saveClientInformation() {
-    // Auth0 uses a pre-registered public client; dynamic registration is not used.
+    // The configured authorization server uses a pre-registered public client; dynamic registration is not used.
   }
 
   tokens() {
@@ -373,7 +373,7 @@ async function connectMcp() {
   if (!oauthConfigurationReady) {
     setConnectionStatus(
       "OAuth configuration required",
-      "Configure the HTTPS MCP endpoint and the Auth0 public client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
+      "Configure the HTTPS MCP endpoint and the public OAuth client ID (VITE_OAUTH_CLIENT_ID) before connecting.",
       "invalid",
     );
     return;
