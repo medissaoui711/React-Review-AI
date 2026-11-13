@@ -170,7 +170,7 @@ The SDK performs protected-resource and authorization-server metadata discovery,
 ### Browser storage and CORS
 
 - Access and refresh tokens are held in memory only and are not written to `localStorage` or `sessionStorage`.
-- The PKCE verifier, OAuth state, and non-secret discovery metadata are stored in `sessionStorage` only to survive the authorization redirect, then cleared after callback processing.
+- The PKCE verifier, OAuth state, and non-secret discovery metadata are stored in `sessionStorage` only to survive the authorization redirect; the transaction expires after 10 minutes and is cleared after callback processing.
 - The Worker allows only explicit HTTPS Origins listed by hostname in `MCP_ALLOWED_ORIGIN_HOSTS`; wildcard Origins are not supported. For the verified production Pages site, the expected hostname entry is `react-review-ai.pages.dev` (hostname only, with no scheme or port).
 - CORS preflight permits the MCP SDK request headers, including `Mcp-Method` and `Mcp-Name`, and exposes the authentication and protocol response headers needed by the browser client.
 - For browser `tools/call` requests, missing/invalid bearer tokens return HTTP `401` and insufficient scope returns HTTP `403`, preserving `WWW-Authenticate` so the official MCP SDK can start or renew authorization. Non-browser hosts without an Origin retain the existing MCP-level authentication challenge behavior.
