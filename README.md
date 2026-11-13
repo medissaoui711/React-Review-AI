@@ -81,12 +81,12 @@ The default bind remains `127.0.0.1`. To bind to a non-loopback interface, all o
 Example:
 
 ```bash
-MCP_HTTP_HOST=0.0.0.0
+MCP_HTTP_HOST=127.0.0.1
 MCP_HTTP_ALLOW_REMOTE=true
 MCP_TRUST_PROXY_TLS=true
 ```
 
-Prefer keeping the MCP process bound to loopback and exposing it only through a reverse proxy. If a non-loopback bind is necessary, restrict network access to the proxy with firewall rules; do not expose the plain HTTP listener directly to the Internet. The application cannot independently prove that an external proxy is enforcing TLS, so deployment configuration and network controls remain an operator responsibility.
+Keep the MCP process bound to loopback and expose it only through a reverse proxy. Set `MCP_HTTP_HOST=0.0.0.0` only when the proxy must reach the process over a private network, and then restrict network access to the proxy with firewall rules; do not expose the plain HTTP listener directly to the Internet. The application cannot independently prove that an external proxy is enforcing TLS, so deployment configuration and network controls remain an operator responsibility.
 
 ### HTTP resource protections
 
