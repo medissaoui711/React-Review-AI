@@ -170,10 +170,12 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const server = createNodeServer(
     { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000 },
     (request, response) => {
+      const requestPath = new URL(request.url, 'http://localhost').pathname;
+      const isHealthProbe = request.method === 'GET' && (requestPath === '/healthz' || requestPath === '/readyz');
       const rateRequest = new Request('http://rate-limit.internal/', {
         headers: { 'x-mcp-rate-limit-key': request.socket.remoteAddress || 'unknown' }
       });
-      const rejection = networkRateLimit(rateRequest);
+      const rejection = isHealthProbe ? null : networkRateLimit(rateRequest);
       if (rejection) {
         response.writeHead(rejection.status, Object.fromEntries(rejection.headers));
         response.end('Too Many Requests');
