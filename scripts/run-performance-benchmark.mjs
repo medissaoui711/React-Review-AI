@@ -11,7 +11,7 @@ function readPositiveOption(name, fallback, maximum) {
   const prefix = `--${name}=`;
   const argument = process.argv.find(value => value.startsWith(prefix));
   const raw = argument ? argument.slice(prefix.length) : String(fallback);
-  if (!/^\\d+$/.test(raw)) throw new Error(`--${name} must be a positive integer.`);
+  if (!/^\d+$/.test(raw)) throw new Error(`--${name} must be a positive integer.`);
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) {
     throw new Error(`--${name} must be between 1 and ${maximum}.`);
@@ -30,9 +30,9 @@ async function main() {
   try {
     for (let index = 0; index < fileCount; index += 1) {
       const name = `Component${String(index + 1).padStart(4, '0')}`;
-      const prefix = `export default function ${name}() { return <img src="/asset.svg" />; }\\n`;
+      const prefix = `export default function ${name}() { return <img src="/asset.svg" />; }\n`;
       const fillerLength = Math.max(0, targetBytes - Buffer.byteLength(prefix, 'utf8') - 5);
-      const source = prefix + `/*${'x'.repeat(fillerLength)}*/\\n`;
+      const source = prefix + `/*${'x'.repeat(fillerLength)}*/\n`;
       await writeFile(path.join(root, 'src', `${name}.jsx`), source, 'utf8');
     }
 
@@ -61,7 +61,7 @@ async function main() {
     };
 
     await mkdir('artifacts', { recursive: true });
-    const output = JSON.stringify(report, null, 2) + '\\n';
+    const output = JSON.stringify(report, null, 2) + '\n';
     await writeFile('artifacts/performance-benchmark.json', output, 'utf8');
     console.log(output);
 
