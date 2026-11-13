@@ -13,7 +13,7 @@
 | 3.7.4 Runtime | /healthz, /readyz, bounded graceful shutdown, strict port/connection limits, remote Host/Origin hardening | IMPLEMENTED / NOT RUN | Run HTTP regression tests and validate in a real reverse-proxy deployment |
 | 3.7.5 OAuth lifecycle | JWKS key-rotation/outage tests, not-before validation, retryable 503 for JWKS infrastructure failures | IMPLEMENTED / NOT RUN | Run tests; live provider, revocation and refresh validation remain external |
 | 3.7.6 Observability | Correlation IDs, sanitized JSON request logs, low-cardinality in-process metrics snapshot | IMPLEMENTED / NOT RUN | Run tests; exporter, alerting, retention and access policy remain deployment work |
-| 3.7.7 Resilience and performance | AST worker-thread isolation, enforceable parser deadline, HTTP concurrency cap, timeout tests | IMPLEMENTED / NOT RUN | Run tests; reproducible load/soak benchmarks and multi-instance rate-limit design remain |
+| 3.7.7 Resilience and performance | AST worker-thread isolation, enforceable parser deadline, HTTP concurrency cap, timeout tests, synthetic 100-file CI benchmark | IMPLEMENTED / NOT RUN | Observe benchmark artifact; deployment load/soak tests and shared multi-instance rate limits remain |
 | 3.7.8 Release engineering | Manual tag certification workflow, source archive, SBOM, license inventory, SHA-256 manifest, generated release notes | IMPLEMENTED / NOT RUN | No tag or release created; owner must explicitly dispatch after version/tag approval |
 
 ## External gates
