@@ -131,11 +131,13 @@ export function createOAuthRuntime(env = process.env, { jwks } = {}) {
   });
 }
 
-export function createRequestRateLimiter({ windowMs = 60_000, maxRequests = 120, maxEntries = 10_000 } = {}) {
+export function createRequestRateLimiter({ windowMs = 60_000, maxRequests = 120, maxEntries = 10_000, keyResolver } = {}) {
+  if (!Number.isInteger(maxRequests) || maxRequests < 1) throw new Error('Rate limit must be a positive integer.');
   const buckets = new Map();
   return function checkRateLimit(request) {
     const authorization = request.headers.get('authorization') || 'anonymous';
-    const key = createHash('sha256').update(authorization).digest('hex');
+    const rawKey = keyResolver ? keyResolver(request) : authorization;
+    const key = createHash('sha256').update(String(rawKey || 'anonymous')).digest('hex');
     const now = Date.now();
     let bucket = buckets.get(key);
     if (!bucket || now - bucket.startedAt >= windowMs) {
