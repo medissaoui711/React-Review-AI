@@ -45,9 +45,10 @@ test('modern server/discover wire response follows the 2026-07-28 result envelop
         resolve(line);
       }
     });
-    child.stdin.end(JSON.stringify(request) + '\\n');
+    child.stdin.write(JSON.stringify(request) + '\\n');
   });
 
+  child.stdin.end();
   const response = JSON.parse(responseLine);
   assert.equal(response.id, request.id);
   assert.equal(response.jsonrpc, '2.0');
