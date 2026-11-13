@@ -102,14 +102,20 @@ test('JWT verifier rejects wrong issuer and audience with OAuth invalid_token', 
 test('JWT verifier rejects expired tokens and unsupported signing algorithms', async () => {
   const { privateKey, jwks } = await makeKeys();
   const verifier = createJwtTokenVerifier({ issuer, resource, jwks });
-  const expired = await tokenFor(privateKey, { expiration: '0s' });
+  const expired = await tokenFor(privateKey, { expiration: Math.floor(Date.now() / 1000) - 10 });
   await assert.rejects(
     verifier.verifyAccessToken(expired),
     error => error instanceof OAuthError && error.code === OAuthErrorCode.InvalidToken
   );
 
-  const { privateKey: noneKey } = await generateKeyPair('RS256');
-  const unsupported = await tokenFor(noneKey, { alg: 'HS256' });
+  const unsupported = await new SignJWT({ scope: 'review:read' })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer(issuer)
+    .setSubject('test-user')
+    .setAudience(resource)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(new TextEncoder().encode('test-only-hmac-secret'));
   await assert.rejects(
     verifier.verifyAccessToken(unsupported),
     error => error instanceof OAuthError && error.code === OAuthErrorCode.InvalidToken
