@@ -233,7 +233,6 @@ jobs:
           PORT: 43128
         run: |
           set -euo pipefail
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method server/discover --format json > /tmp/inspector-stdio-init.json
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/list --format json > /tmp/inspector-stdio-tools.json
           jq -e '.result.tools | map(.name) | sort == ["audit_accessibility","review_component","review_project","run_test_audit"]' /tmp/inspector-stdio-tools.json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_project --format json > /dev/null
@@ -251,7 +250,6 @@ jobs:
             sleep 0.25
           done
           test "${STATUS:-}" = "405"
-          npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method server/discover --format json > /tmp/inspector-http-init.json
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/list --format json > /tmp/inspector-http-tools.json
           jq -e '.result.tools | map(.name) | sort == ["audit_accessibility","review_component","review_project","run_test_audit"]' /tmp/inspector-http-tools.json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/call --tool-name review_project --format json > /dev/null
