@@ -208,6 +208,50 @@ test('remote JWKS refresh accepts rotated signing keys and surfaces provider out
   }
 });
 
+test('HTTP auth reports a retryable service error when JWKS infrastructure is unavailable', async () => {
+  const { privateKey } = await makeKeys();
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-jwks-outage-'));
+  const root = path.join(parent, 'project');
+  await mkdir(root, { recursive: true });
+  const runtime = createHttpServer({
+    ...testEnv(),
+    REACT_REVIEW_ROOT: root
+  }, {
+    jwks: async () => { throw new Error('private upstream diagnostic'); }
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const token = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
+    const response = await fetch(`http://127.0.0.1:${address.port}/mcp`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'review_project', arguments: {} }
+      })
+    });
+    const body = await response.text();
+    assert.equal(response.status, 503, body);
+    assert.equal(response.headers.get('retry-after'), '5');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.doesNotMatch(body, /private upstream diagnostic/);
+  } finally {
+    await runtime.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test('HTTP auth gate challenges missing tokens and rejects insufficient scopes', async () => {
   const { privateKey, jwks } = await makeKeys();
   const oauth = createOAuthRuntime(testEnv(), { jwks });
