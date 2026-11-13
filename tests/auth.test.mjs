@@ -3,8 +3,10 @@ import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { createServer as createNodeServer } from 'node:http';
 import {
   createLocalJWKSet,
+  createRemoteJWKSet,
   exportJWK,
   generateKeyPair,
   SignJWT
@@ -22,13 +24,13 @@ import { createHttpServer } from '../server/http.mjs';
 const issuer = 'https://identity.example.test/';
 const resource = 'https://mcp.example.test/mcp';
 
-async function makeKeys() {
+async function makeKeys(kid = 'phase-3-5-test-key') {
   const { publicKey, privateKey } = await generateKeyPair('RS256');
   const publicJwk = await exportJWK(publicKey);
-  publicJwk.kid = 'phase-3-5-test-key';
+  publicJwk.kid = kid;
   publicJwk.alg = 'RS256';
   publicJwk.use = 'sig';
-  return { privateKey, jwks: createLocalJWKSet({ keys: [publicJwk] }) };
+  return { privateKey, publicJwk, jwks: createLocalJWKSet({ keys: [publicJwk] }) };
 }
 
 async function tokenFor(privateKey, overrides = {}) {
@@ -36,7 +38,7 @@ async function tokenFor(privateKey, overrides = {}) {
     scope: 'review:read',
     ...overrides.claims
   })
-    .setProtectedHeader({ alg: overrides.alg || 'RS256', kid: 'phase-3-5-test-key' })
+    .setProtectedHeader({ alg: overrides.alg || 'RS256', kid: overrides.kid || 'phase-3-5-test-key' })
     .setIssuer(overrides.issuer || issuer)
     .setSubject(overrides.subject || 'test-user')
     .setAudience(overrides.audience || resource)
@@ -112,6 +114,20 @@ test('JWT verifier rejects expired tokens and unsupported signing algorithms', a
     error => error instanceof OAuthError && error.code === OAuthErrorCode.InvalidToken
   );
 
+  const notYetValid = await new SignJWT({ scope: 'review:read' })
+    .setProtectedHeader({ alg: 'RS256', kid: 'phase-3-5-test-key' })
+    .setIssuer(issuer)
+    .setSubject('test-user')
+    .setAudience(resource)
+    .setIssuedAt()
+    .setNotBefore(Math.floor(Date.now() / 1000) + 60)
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  await assert.rejects(
+    verifier.verifyAccessToken(notYetValid),
+    error => error instanceof OAuthError && error.code === OAuthErrorCode.InvalidToken
+  );
+
   const unsupported = await new SignJWT({ scope: 'review:read' })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuer(issuer)
@@ -136,6 +152,60 @@ test('JWT verifier does not misclassify JWKS infrastructure failures as bad cred
     jwks: async () => { throw new Error('JWKS endpoint unavailable'); }
   });
   await assert.rejects(verifier.verifyAccessToken(token), /JWKS endpoint unavailable/);
+});
+
+test('remote JWKS refresh accepts rotated signing keys and surfaces provider outages', async () => {
+  const first = await makeKeys('rotation-key-a');
+  const second = await makeKeys('rotation-key-b');
+  const third = await makeKeys('rotation-key-c');
+  let activeKeys = { keys: [first.publicJwk] };
+  let unavailable = false;
+
+  const jwksServer = createNodeServer((request, response) => {
+    if (unavailable) {
+      response.writeHead(503, { 'content-type': 'text/plain' });
+      response.end('temporarily unavailable');
+      return;
+    }
+    response.writeHead(200, {
+      'content-type': 'application/json',
+      'cache-control': 'no-store'
+    });
+    response.end(JSON.stringify(activeKeys));
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      jwksServer.once('error', reject);
+      jwksServer.listen(0, '127.0.0.1', resolve);
+    });
+    const address = jwksServer.address();
+    const remoteJwks = createRemoteJWKSet(
+      new URL(`http://127.0.0.1:${address.port}/jwks`),
+      { timeoutDuration: 1000, cooldownDuration: 0, cacheMaxAge: 300_000 }
+    );
+    const verifier = createJwtTokenVerifier({ issuer, resource, jwks: remoteJwks });
+
+    const firstToken = await tokenFor(first.privateKey, { kid: 'rotation-key-a' });
+    assert.equal((await verifier.verifyAccessToken(firstToken)).clientId, 'test-user');
+
+    activeKeys = { keys: [second.publicJwk] };
+    const secondToken = await tokenFor(second.privateKey, { kid: 'rotation-key-b' });
+    assert.equal((await verifier.verifyAccessToken(secondToken)).clientId, 'test-user');
+
+    unavailable = true;
+    const thirdToken = await tokenFor(third.privateKey, { kid: 'rotation-key-c' });
+    await assert.rejects(
+      verifier.verifyAccessToken(thirdToken),
+      error => !(error instanceof OAuthError)
+    );
+
+    unavailable = false;
+    activeKeys = { keys: [third.publicJwk] };
+    assert.equal((await verifier.verifyAccessToken(thirdToken)).clientId, 'test-user');
+  } finally {
+    await new Promise(resolve => jwksServer.close(resolve));
+  }
 });
 
 test('HTTP auth gate challenges missing tokens and rejects insufficient scopes', async () => {
