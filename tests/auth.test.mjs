@@ -126,6 +126,18 @@ test('JWT verifier rejects expired tokens and unsupported signing algorithms', a
   );
 });
 
+
+test('JWT verifier does not misclassify JWKS infrastructure failures as bad credentials', async () => {
+  const { privateKey } = await makeKeys();
+  const token = await tokenFor(privateKey);
+  const verifier = createJwtTokenVerifier({
+    issuer,
+    resource,
+    jwks: async () => { throw new Error('JWKS endpoint unavailable'); }
+  });
+  await assert.rejects(verifier.verifyAccessToken(token), /JWKS endpoint unavailable/);
+});
+
 test('HTTP auth gate challenges missing tokens and rejects insufficient scopes', async () => {
   const { privateKey, jwks } = await makeKeys();
   const oauth = createOAuthRuntime(testEnv(), { jwks });
