@@ -227,6 +227,7 @@ jobs:
       - name: MCP Inspector CLI validation (STDIO and Streamable HTTP)
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
+          PACKAGE_DIR: ${{ steps.source.outputs.package_dir }}
           MCP_SERVER_ENTRY: ${{ steps.source.outputs.server_entry }}
           REACT_REVIEW_ROOT: ${{ github.workspace }}
           PORT: 43128
