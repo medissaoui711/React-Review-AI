@@ -126,7 +126,7 @@ test('Cloudflare Worker enforces explicit-origin CORS for browser MCP and OAuth 
   assert.match(worker, /expectedMethods\.includes\(requestedMethod/);
   assert.match(worker, /expectedMethods\.join\(", "\)/);
   assert.match(worker, /isMcpRoute \? \["GET", "POST"\] : \["GET"\]/);
-  assert.match(worker, /isMcpRoute \? "POST" : "GET"/);
+  assert.match(worker, /isMcpRoute \? \["GET", "POST"\] : \["GET"\]/);
   assert.match(worker, /requestedHeaders\.some\(\(header\) => !CORS_ALLOWED_HEADERS\.has\(header\)\)/);
   assert.match(worker, /"mcp-method"/);
   assert.match(worker, /"mcp-name"/);
