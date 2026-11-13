@@ -60,6 +60,21 @@ test('Streamable HTTP rejects untrusted browser origins before MCP processing', 
   });
 });
 
+test('Streamable HTTP rejects untrusted Host headers before MCP processing', async () => {
+  await withHttpServer(async ({ endpoint }) => {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        host: 'untrusted.example',
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream'
+      },
+      body: '{}'
+    });
+    assert.equal(response.status, 403);
+  });
+});
+
 test('Streamable HTTP accepts non-browser clients without an Origin header', async () => {
   await withHttpServer(async ({ endpoint }) => {
     const response = await fetch(endpoint, {
