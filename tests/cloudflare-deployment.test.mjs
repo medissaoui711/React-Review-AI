@@ -92,7 +92,7 @@ test('D5 documentation accurately describes the public route boundary and owner-
   assert.match(doc, /readyz.*internal Container probe/);
   assert.match(doc, /Workers Paid and Cloudflare Containers/);
   assert.match(doc, /exact public resource URL ending in/);
-  assert.match(doc, /Do not commit access tokens, client secrets, private signing keys/);
+  assert.match(doc, /Never commit access tokens, client secrets, private signing keys/);
   assert.match(doc, /separate owner approval/);
   assert.match(doc, /D6 live OAuth\/ChatGPT certification/);
   assert.doesNotMatch(doc, /Worker exposes only.*GET `\/readyz`/);
