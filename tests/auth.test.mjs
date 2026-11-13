@@ -306,6 +306,46 @@ test('remote HTTP binding is denied unless explicit remote and TLS proxy setting
   }), /OAuth configuration and MCP_TRUST_PROXY_TLS=true/);
 });
 
+test('remote HTTP mode rejects localhost Host and Origin aliases', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-remote-host-'));
+  const root = path.join(parent, 'project');
+  await mkdir(root, { recursive: true });
+  const runtime = createHttpServer(testEnv({
+    REACT_REVIEW_ROOT: root,
+    MCP_HTTP_HOST: '0.0.0.0',
+    MCP_HTTP_ALLOW_REMOTE: 'true',
+    MCP_TRUST_PROXY_TLS: 'true',
+    MCP_PUBLIC_URL: 'https://mcp.example.test/mcp'
+  }), {
+    jwks: createLocalJWKSet({ keys: [] })
+  });
+
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const base = `http://127.0.0.1:${address.port}/healthz`;
+
+    const localhostHost = await fetch(base, { headers: { host: 'localhost' } });
+    assert.ok([400, 403].includes(localhostHost.status));
+
+    const publicHostLocalOrigin = await fetch(base, {
+      headers: { host: 'mcp.example.test', origin: 'http://localhost:3000' }
+    });
+    assert.equal(publicHostLocalOrigin.status, 403);
+
+    const trustedOrigin = await fetch(base, {
+      headers: { host: 'mcp.example.test', origin: 'https://client.example.test' }
+    });
+    assert.equal(trustedOrigin.status, 200);
+  } finally {
+    await runtime.close();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test('rate limiter bounds anonymous and token-keyed request bursts', () => {
   const limit = createRequestRateLimiter({ windowMs: 60_000, maxRequests: 1 });
   const request = new Request('http://localhost/mcp', { method: 'POST' });
