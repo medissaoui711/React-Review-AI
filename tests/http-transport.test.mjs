@@ -140,7 +140,7 @@ test('HTTP request logs are correlated and never include authorization headers',
 });
 
 test('health and readiness endpoints return minimal operational status', async () => {
-  await withHttpServer(async ({ endpoint }) => {
+  await withHttpServer(async ({ endpoint, getMetrics }) => {
     const base = endpoint.slice(0, -'/mcp'.length);
     const health = await fetch(`${base}/healthz`);
     assert.equal(health.status, 200);
