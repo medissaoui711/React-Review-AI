@@ -99,7 +99,7 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 
 ### HTTP resource protections
 
-- `Host` and `Origin` allowlists remain enforced; add trusted browser origins explicitly through `MCP_ALLOWED_ORIGIN_HOSTS`.
+- `Host` and `Origin` allowlists remain enforced; add trusted browser origins explicitly through `MCP_ALLOWED_ORIGIN_HOSTS`. Remote-bind mode starts without localhost aliases and allows only the configured resource host plus explicitly configured origins.
 - Bearer tokens and authorization headers are never written to application logs.
 - Request bodies are limited to 1 MiB by default.
 - Requests are rate-limited to 300 per socket peer per minute and 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_IP_PER_MINUTE` and `MCP_RATE_LIMIT_PER_MINUTE` respectively to change these positive integers. Behind a reverse proxy, the socket peer is the proxy, so enforce complementary per-client limits at the proxy.
