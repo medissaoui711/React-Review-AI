@@ -98,6 +98,45 @@ test('HTTP server bounds concurrent requests while keeping health probes availab
   }
 });
 
+test('graceful shutdown force-closes an active request within its configured deadline', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-shutdown-'));
+  const root = path.join(parent, 'project');
+  await mkdir(root, { recursive: true });
+  const runtime = createHttpServer({
+    REACT_REVIEW_ROOT: root,
+    MCP_SHUTDOWN_TIMEOUT_MS: '50'
+  });
+  let request;
+
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const accepted = new Promise(resolve => runtime.server.once('request', resolve));
+    request = httpRequest({
+      hostname: '127.0.0.1',
+      port: address.port,
+      path: '/mcp',
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': '100' }
+    });
+    request.on('error', () => {});
+    request.write('{}');
+    await accepted;
+
+    const startedAt = Date.now();
+    await runtime.close();
+    const shutdownDuration = Date.now() - startedAt;
+    assert.ok(shutdownDuration >= 20, `expected shutdown grace period, got ${shutdownDuration}ms`);
+    assert.ok(shutdownDuration < 1000, `shutdown exceeded bounded deadline: ${shutdownDuration}ms`);
+  } finally {
+    request?.destroy();
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test('HTTP server rejects invalid graceful-shutdown and concurrency limits', () => {
   assert.throws(
     () => createHttpServer({ MCP_SHUTDOWN_TIMEOUT_MS: '0' }),
