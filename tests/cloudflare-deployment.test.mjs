@@ -142,7 +142,7 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /endpoint\.hash/);
   assert.match(main, /!== "\/mcp"/);
   assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/i);
-  assert.match(main, /No access token or client secret is stored/);
+  assert.match(main, /Access and refresh tokens stay in memory/);
   assert.match(main, /BrowserOAuthProvider/);
   assert.match(main, /VITE_OAUTH_CLIENT_ID/);
   assert.match(main, /StreamableHTTPClientTransport/);
