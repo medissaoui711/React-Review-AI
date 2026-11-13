@@ -11,6 +11,7 @@ import {
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
 import { createReviewService } from './review.mjs';
+import { createRuntimeMetrics } from './metrics.mjs';
 import {
   createOAuthRuntime,
   createRequestRateLimiter,
@@ -81,6 +82,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     keyResolver: request => request.headers.get('x-mcp-rate-limit-key')
   });
   const shutdownTimeoutMs = readPositiveLimit('MCP_SHUTDOWN_TIMEOUT_MS', 10_000);
+  const metrics = createRuntimeMetrics();
   const isReady = async () => {
     try {
       await createReviewService(env.REACT_REVIEW_ROOT);
@@ -89,7 +91,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       return false;
     }
   };
-  const mcp = createMcpHandler(createServer, { legacy: 'reject' });
+  const mcp = createMcpHandler(() => createServer({ metrics }), { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
@@ -196,6 +198,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       const writeRequestLog = event => {
         if (logged) return;
         logged = true;
+        metrics.recordHttp({ route, status: response.statusCode, durationMs: Date.now() - startedAt, aborted: event === 'http_request_aborted' });
         console.error(JSON.stringify({
           level: 'info',
           event,
@@ -217,6 +220,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       });
       const rejection = isHealthProbe ? null : networkRateLimit(rateRequest);
       if (rejection) {
+        metrics.recordRateLimit();
         response.writeHead(rejection.status, Object.fromEntries(rejection.headers));
         response.end('Too Many Requests');
         return;
@@ -227,6 +231,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
   return {
     server,
+    getMetrics() { return metrics.snapshot(); },
     async close() {
       if (!server.listening) {
         await mcp.close();
