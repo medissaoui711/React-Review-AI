@@ -131,14 +131,22 @@ jobs:
           }
           NODE
 
-      - name: MCP Inspector modern stdio interoperability diagnostic
-        continue-on-error: true
+      - name: MCP Inspector modern stdio interoperability test
         timeout-minutes: 3
         working-directory: ${{ steps.source.outputs.package_dir }}
         env:
           REACT_REVIEW_ROOT: ${{ github.workspace }}
         run: |
-          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern -e REACT_REVIEW_ROOT=$REACT_REVIEW_ROOT node server/index.mjs --method tools/list --format json
+          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern -e REACT_REVIEW_ROOT=$REACT_REVIEW_ROOT node server/index.mjs --method tools/list --format json > /tmp/react-review-ai-inspector-stdio.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          const response = JSON.parse(await readFile('/tmp/react-review-ai-inspector-stdio.json', 'utf8'));
+          assert.deepEqual(response.result.tools.map(tool => tool.name).sort(), [
+            'audit_accessibility', 'review_component', 'review_project', 'run_test_audit'
+          ]);
+          console.log('MCP Inspector modern stdio tools/list: PASS');
+          NODE
 
       - name: MCP Streamable HTTP server/discover, tools/list, and tools/call integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
@@ -204,7 +212,16 @@ jobs:
           }
           NODE
           echo "Running official Inspector modern-era HTTP interoperability diagnostic"
-          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/list --format json || echo "Inspector HTTP diagnostic did not pass; see step output (non-blocking)."
+          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/list --format json > /tmp/react-review-ai-inspector-http.json
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          const response = JSON.parse(await readFile('/tmp/react-review-ai-inspector-http.json', 'utf8'));
+          assert.deepEqual(response.result.tools.map(tool => tool.name).sort(), [
+            'audit_accessibility', 'review_component', 'review_project', 'run_test_audit'
+          ]);
+          console.log('MCP Inspector modern HTTP tools/list: PASS');
+          NODE
           cat /tmp/react-review-ai-http.log
 
 
