@@ -357,6 +357,10 @@ async function finishOAuthCallback(provider) {
   );
   try {
     await callbackTransport.finishAuth(params);
+  } catch (error) {
+    provider.clearOAuthTransaction();
+    clearOAuthCallbackUrl();
+    throw error;
   } finally {
     await callbackTransport.close();
   }
@@ -376,27 +380,28 @@ async function connectMcp() {
   }
 
   connectButton.disabled = true;
+  let pendingTransport;
   setConnectionStatus("Preparing secure connection", "Discovering the protected resource and preparing OAuth Authorization Code + PKCE.", "pending");
   try {
     oauthProvider ??= new BrowserOAuthProvider(oauthClientId);
     await finishOAuthCallback(oauthProvider);
 
     const client = new Client({ name: "react-review-ai-dashboard", version: "0.6.0" });
-    const transport = new StreamableHTTPClientTransport(
+    pendingTransport = new StreamableHTTPClientTransport(
       new URL(import.meta.env.VITE_MCP_ENDPOINT.trim()),
       { authProvider: oauthProvider },
     );
 
     try {
-      await client.connect(transport);
+      await client.connect(pendingTransport);
     } catch (error) {
       if (error instanceof UnauthorizedError) return;
-      await transport.close();
+      await pendingTransport.close();
       throw error;
     }
 
     mcpClient = client;
-    mcpTransport = transport;
+    mcpTransport = pendingTransport;
     const listed = await client.listTools();
     const availableTools = new Set((listed.tools || []).map((tool) => tool.name));
     runButtons.forEach((button) => {
@@ -410,6 +415,9 @@ async function connectMcp() {
     connectButton.textContent = "Disconnect";
     connectButton.disabled = false;
   } catch (error) {
+    try { await pendingTransport?.close(); } catch {
+      // A failed handshake may already have closed the transport.
+    }
     setConnectionStatus("Connection could not be completed", error instanceof Error ? error.message : "Unexpected connection error.", "invalid");
     connectButton.disabled = false;
   }
