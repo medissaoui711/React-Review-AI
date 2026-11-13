@@ -51,10 +51,8 @@ test('HTTP server bounds concurrent requests while keeping health probes availab
     MCP_MAX_CONCURRENT_REQUESTS: '1'
   });
   const abort = new AbortController();
-  let streamController;
   const hangingBody = new ReadableStream({
     start(controller) {
-      streamController = controller;
       controller.enqueue(new TextEncoder().encode('{}'));
     }
   });
@@ -88,7 +86,6 @@ test('HTTP server bounds concurrent requests while keeping health probes availab
     assert.ok(runtime.getMetrics().counters.http_overloaded_total >= 1);
 
     abort.abort();
-    streamController.error(new Error('test request aborted'));
     await firstRequest;
   } finally {
     abort.abort();
