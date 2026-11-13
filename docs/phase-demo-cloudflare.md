@@ -22,7 +22,7 @@ The current Cloudflare configuration uses the direct Durable Object Container AP
 ## Security boundary
 
 - The container is not assigned a public address; inbound requests pass through the Worker and Durable Object.
-- The Worker exposes only `POST /mcp`, `GET /.well-known/oauth-protected-resource`, `GET /healthz`, and `GET /readyz`.
+- The public Worker exposes only `POST /mcp`, `GET /.well-known/oauth-protected-resource`, and `GET /healthz`. `/readyz` is an internal Container probe reached only by the Durable Object; it is not a public Worker route.
 - The Worker rejects public requests until OAuth issuer and JWKS URLs are configured.
 - The container binds to `0.0.0.0:3000` internally and requires the existing remote-mode OAuth safeguards.
 - The project root is fixed to `/app/demo-project`. No tool accepts a caller-supplied root.
@@ -76,3 +76,69 @@ A subsequent pull-request security run must validate the synchronized lockfile w
 - In-memory request rate limits are process-local and reset on container restart; they are not a durable, globally coordinated abuse-control system.
 - Live OAuth/ChatGPT certification remains pending until a public HTTPS deployment and a real provider-neutral OAuth/OIDC issuer/JWKS configuration are available.
 - Cloudflare Containers availability and billing-plan eligibility must be confirmed by the account owner before any deployment approval. No account state was changed in this phase.
+
+
+## Phase D5 deployment readiness
+
+Implementation branch: `phase-demo-cloudflare-d5-deployment-readiness`
+Base: `ec0d7a09d0f8fc8d893cfc2ac73cbb656eee91d4`
+
+Phase D5 prepares the repository and owner checklist for a controlled first deployment. It does not authenticate to or mutate a Cloudflare account, create resources, set variables/secrets, change a billing plan, or deploy.
+
+### Pre-deployment account gate
+
+The account owner must verify in the Cloudflare dashboard before authorizing any deployment action:
+
+1. The intended Cloudflare account is selected and accessible to the operator.
+2. Workers Paid and Cloudflare Containers are available for that account and jurisdiction.
+3. The account's current Container limits, included usage, overage rates, and any applicable regional restrictions are acceptable.
+4. A `workers.dev` subdomain is enabled and available for the intended Worker name.
+5. The owner has reviewed the current official pricing pages; do not infer total cost from the base Workers subscription alone.
+
+Official references:
+- [Workers plans and pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+- [Containers pricing](https://developers.cloudflare.com/containers/platform/pricing/)
+- [Containers limits](https://developers.cloudflare.com/containers/platform/limits/)
+- [Workers.dev subdomains](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
+
+No account eligibility, billing state, resource quota, or subdomain availability is asserted by this repository. These are account-specific checks.
+
+### OAuth configuration contract
+
+The demo remains provider-neutral. Before deployment, the owner must supply and independently verify:
+
+- `OAUTH_ISSUER_URL`: exact issuer identifier published by the selected external OAuth/OIDC provider.
+- `OAUTH_JWKS_URL`: exact HTTPS JWKS endpoint, without credentials or fragments.
+- Provider-issued access tokens must be signed with RS256 or ES256 and contain the exact issuer, subject, expiry, and audience claims required by the resource server.
+- The required token audience is the exact public resource URL ending in `/mcp`. The Worker derives this URL from its incoming `workers.dev` origin; the OAuth provider must be configured to issue that exact audience.
+- `OAUTH_REQUIRED_SCOPE`: defaults to `review:read`; change only when the provider's issued scopes and the server setting are deliberately aligned.
+- `MCP_ALLOWED_ORIGIN_HOSTS`: leave unset until the actual deployed client Origin is observed and verified. Non-browser MCP requests without Origin remain supported.
+
+The issuer and JWKS URLs are public trust configuration, not credentials. Never commit access tokens, client secrets, private signing keys, or account API tokens. The resource server does not need an OAuth client secret and does not issue tokens.
+
+### Controlled deployment sequence (not authorized by this phase)
+
+After separate owner approval for account changes and deployment:
+
+1. Confirm the account, Workers Paid/Containers eligibility, `workers.dev` availability, and cost limits.
+2. Configure only the required provider issuer/JWKS values and any deliberately approved scope/origin settings using Cloudflare's secret/variable interface. Do not place values in source control or CI logs.
+3. Build the Worker and Container image using the existing non-deploying CI build.
+4. Review the final account target, Worker name, generated public resource URL, and OAuth audience alignment.
+5. Obtain explicit approval for the exact deployment operation before running `cf deploy`.
+6. After deployment, run the D6 live validation matrix before declaring the demo production-ready.
+
+### Post-deployment acceptance evidence required for D6
+
+- `GET /healthz` returns edge liveness without waking the Container.
+- `GET /.well-known/oauth-protected-resource` returns the expected resource, issuer, and scope.
+- `/readyz` is not publicly routable.
+- MCP initialize and `tools/list` work over the deployed HTTPS endpoint.
+- Missing, malformed, expired, wrong-issuer, wrong-audience, wrong-algorithm, and insufficient-scope tokens are rejected; a valid provider-issued token can call each read-only tool.
+- Untrusted Origin is rejected when an Origin allowlist is configured; the observed trusted client Origin succeeds.
+- JWKS retrieval succeeds only for the configured exact URL; redirects and other destinations remain blocked.
+- Container cold start, restart, inactivity, request limits, logs, and real billing/usage are reviewed.
+- No user project files are accessible; the demo remains pinned to `/app/demo-project`.
+
+### D5 boundary
+
+D5 implementation does not perform account discovery, account mutation, billing changes, secret configuration, resource creation, or deployment. Those actions require separate explicit approval. D6 live OAuth/ChatGPT certification cannot begin until the public HTTPS endpoint and real external provider configuration exist.
