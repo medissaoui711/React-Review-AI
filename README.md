@@ -128,6 +128,10 @@ See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibili
 
 The server performs static, read-only analysis. It does not modify project files, execute project code or tests, calculate actual test coverage, or claim WCAG conformance.
 
+## Release certification workflow
+
+The manual workflow `.github/workflows/release-certification.yml` certifies an existing version tag, verifies that the tag matches `package.json`, runs syntax checks, the full automated test suite and dependency audit, then creates a source archive, CycloneDX SBOM, license inventory and SHA-256 manifest. It publishes a GitHub Release with generated release notes only when an authorized maintainer explicitly dispatches the workflow with a tag. No release or tag is created by Phase 3.7 implementation.
+
 ## Production certification status
 
 Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector interoperability, and deployment-level monitoring remain owner-controlled gates. See [Phase 3.7 owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
