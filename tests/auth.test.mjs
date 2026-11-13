@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   createLocalJWKSet,
@@ -196,4 +199,50 @@ test('request body limit rejects oversized declared and streamed bodies', async 
     body: '0123456789abcdef'
   }), 8);
   assert.equal(bounded.status, 413);
+});
+
+test('HTTP endpoint exposes guarded resource metadata and challenges unauthenticated MCP calls', async () => {
+  const { jwks } = await makeKeys();
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-oauth-http-'));
+  const root = path.join(parent, 'project');
+  await mkdir(root, { recursive: true });
+  const runtime = createHttpServer({
+    ...testEnv(),
+    REACT_REVIEW_ROOT: root
+  }, { jwks });
+
+  try {
+    await new Promise((resolve, reject) => {
+      runtime.server.once('error', reject);
+      runtime.server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = runtime.server.address();
+    const base = `http://127.0.0.1:${address.port}`;
+
+    const metadata = await fetch(`${base}/.well-known/oauth-protected-resource`);
+    assert.equal(metadata.status, 200);
+    const metadataBody = await metadata.json();
+    assert.equal(metadataBody.resource, 'http://127.0.0.1:3000/mcp');
+
+    const wrongHost = await fetch(`${base}/.well-known/oauth-protected-resource`, {
+      headers: { host: 'attacker.example.test' }
+    });
+    assert.ok([400, 403].includes(wrongHost.status));
+
+    const unauthenticated = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    });
+    assert.equal(unauthenticated.status, 401);
+    assert.match(unauthenticated.headers.get('www-authenticate') || '', /resource_metadata=/);
+
+    const metadataPost = await fetch(`${base}/.well-known/oauth-protected-resource`, {
+      method: 'POST'
+    });
+    assert.equal(metadataPost.status, 405);
+  } finally {
+    await runtime.close();
+    await rm(parent, { recursive: true, force: true });
+  }
 });
