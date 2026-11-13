@@ -102,7 +102,7 @@ function withCors(response: Response, origin: string | null): Response {
   });
 }
 
-function corsPreflight(request: Request, origin: string | null): Response {
+function corsPreflight(request: Request, origin: string | null, expectedMethod: "GET" | "POST"): Response {
   const requestedMethod = request.headers.get("access-control-request-method")?.toUpperCase();
   const requestedHeaders = (request.headers.get("access-control-request-headers") || "")
     .split(",")
@@ -120,7 +120,7 @@ function corsPreflight(request: Request, origin: string | null): Response {
   return withCors(new Response(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Methods": `${expectedMethod}, OPTIONS`,
       "Access-Control-Allow-Headers": "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Protocol-Version, Mcp-Session-Id",
       "Access-Control-Max-Age": "600",
       "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
@@ -250,7 +250,7 @@ export default {
     }
 
     if ((isMcpRoute || isResourceMetadata) && request.method.toUpperCase() === "OPTIONS") {
-      return corsPreflight(request, allowedOrigin);
+      return corsPreflight(request, allowedOrigin, isMcpRoute ? "POST" : "GET");
     }
 
     // Liveness and OAuth discovery stay at the edge; neither can wake a Container.
