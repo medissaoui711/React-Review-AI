@@ -169,7 +169,7 @@ export function createRequestRateLimiter({ windowMs = 60_000, maxRequests = 120,
 
 export async function enforceRequestBodyLimit(request, maxBytes = 1_048_576) {
   const length = request.headers.get('content-length');
-  if (length && (!/^\\d+$/.test(length) || Number(length) > maxBytes)) {
+  if (length && (!/^\d+$/.test(length) || Number(length) > maxBytes)) {
     return new Response('Payload Too Large', { status: 413 });
   }
   if (!request.body) return request;
