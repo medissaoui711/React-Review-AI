@@ -132,7 +132,7 @@ export async function createServer() {
       'No project source code or scripts are executed or modified.',
       'HTTP tool calls require OAuth when an identity provider is configured; initialize and tool discovery remain available without a token.'
     ].join(' ')
-  }, { maxToolInputElements: 10_000 });
+  }, { maxToolInputElements: 10_000, supportedProtocolVersions: ['2026-07-28'] });
 
   registerReadOnlyTool(server, 'review_project', {
     title: 'Review React Project',
