@@ -228,7 +228,7 @@ jobs:
           git add .codex-plugin .gitignore server skills tests mcp.json plugin.json package.json package-lock.json README.md
           if ! git diff --cached --quiet; then
             git commit -m "build: publish source tree and lock npm dependencies"
-            git push origin HEAD:main
+            git push origin "HEAD:$GITHUB_REF_NAME"
           else
             echo "Source tree and lockfile are already up to date."
           fi
