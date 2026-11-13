@@ -184,6 +184,10 @@ export function createHttpServer(env = process.env, authOptions = {}) {
             });
           }
           if (authResult instanceof Response) {
+            // Browser SDKs need the HTTP status and WWW-Authenticate challenge
+            // to refresh or restart OAuth. Non-browser hosts retain the
+            // MCP-level challenge contract used by ChatGPT integrations.
+            if (safeRequest.headers.has('origin')) return authResult;
             const insufficientScope = authResult.status === 403;
             return mcp.fetch(safeRequest, {
               authInfo: {
