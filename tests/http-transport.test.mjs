@@ -29,18 +29,16 @@ async function withHttpServer(run) {
   }
 }
 
-test('HTTP server applies explicit keep-alive and shutdown timeout limits', () => {
-  const previousRoot = process.env.REACT_REVIEW_ROOT;
+test('HTTP server applies explicit keep-alive and accepts a shutdown timeout', async () => {
   const runtime = createHttpServer({
-    ...process.env,
-    REACT_REVIEW_ROOT: previousRoot || process.cwd(),
+    REACT_REVIEW_ROOT: process.cwd(),
     MCP_SHUTDOWN_TIMEOUT_MS: '2500'
   });
   try {
     assert.equal(runtime.server.keepAliveTimeout, 5000);
     assert.equal(runtime.server.maxRequestsPerSocket, 1000);
   } finally {
-    void runtime.close();
+    await runtime.close();
   }
 });
 
