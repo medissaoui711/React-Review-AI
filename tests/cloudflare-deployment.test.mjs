@@ -151,7 +151,7 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /pkce-verifier/);
   assert.doesNotMatch(main, /localStorage/);
   assert.doesNotMatch(main, /sessionStorage\.setItem\([^,]*(?:token|access)/i);
-  assert.match(main, /client\.callTool/);
+  assert.match(main, /mcpClient\.callTool/);
   assert.match(main, /saveTokens\(tokens\)\s*\{\s*this\.accessTokens = tokens;/);
   assert.doesNotMatch(main, /client_secret|localStorage/i);
 });
