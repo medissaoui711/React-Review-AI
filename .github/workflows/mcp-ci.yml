@@ -43,10 +43,9 @@ jobs:
           npm ci --no-audit --no-fund
           npm install --no-save --package-lock=false --no-audit --no-fund @modelcontextprotocol/client@2.4.0
           npm ls --depth=0
-      - name: Syntax-check server modules
+      - name: Syntax-check server and build modules
         working-directory: ${{ steps.source.outputs.package_dir }}
-        run: |
-          find server -type f -name '*.mjs' -print0 | xargs -0 -r -n1 node --check
+        run: npm run check
       - name: Run security and regression tests
         working-directory: ${{ steps.source.outputs.package_dir }}
         run: npm test
@@ -196,6 +195,18 @@ jobs:
           }
           NODE
           cat /tmp/react-review-ai-http.log
+
+
+      - name: Run bounded synthetic AST performance benchmark
+        working-directory: ${{ steps.source.outputs.package_dir }}
+        run: node scripts/run-performance-benchmark.mjs --files=100 --bytes=1024
+      - name: Upload performance benchmark evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: react-review-ai-performance-${{ github.sha }}
+          path: artifacts/performance-benchmark.json
+          if-no-files-found: error
+          retention-days: 30
 
   publish-generated-files:
     needs: mcp-stdio-smoke
