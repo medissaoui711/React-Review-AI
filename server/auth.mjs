@@ -45,7 +45,7 @@ export function readAuthConfig(env = process.env, { allowHttpLoopback = false } 
   }
 
   return Object.freeze({
-    issuer: issuer.href.replace(/\/$/, ''),
+    issuer: issuer.href,
     jwksUrl,
     resource,
     scope,
