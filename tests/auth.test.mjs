@@ -184,17 +184,16 @@ test('rate limiter bounds anonymous and token-keyed request bursts', () => {
 });
 
 test('request body limit rejects oversized declared and streamed bodies', async () => {
-  const declared = enforceRequestBodyLimit(new Request('http://localhost/mcp', {
+  const declared = await enforceRequestBodyLimit(new Request('http://localhost/mcp', {
     method: 'POST',
     headers: { 'content-length': '20' },
     body: '{}'
   }), 10);
   assert.equal(declared.status, 413);
 
-  const bounded = enforceRequestBodyLimit(new Request('http://localhost/mcp', {
+  const bounded = await enforceRequestBodyLimit(new Request('http://localhost/mcp', {
     method: 'POST',
     body: '0123456789abcdef'
   }), 8);
-  assert.ok(bounded instanceof Request);
-  await assert.rejects(bounded.text(), /Request body exceeds the configured limit/);
+  assert.equal(bounded.status, 413);
 });
