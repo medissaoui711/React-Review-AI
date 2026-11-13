@@ -53,6 +53,15 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
   const allowedHosts = remoteBind ? [] : [...localhostAllowedHostnames()];
   const allowedOrigins = remoteBind ? [] : [...localhostAllowedOrigins()];
+  const configuredHosts = (env.MCP_ALLOWED_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
+  for (const hostname of configuredHosts) {
+    const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
+    const validIpv6Name = /^\[[0-9a-f:]+\]$/i.test(hostname);
+    if (!validDnsName && !validIpv6Name) {
+      throw new Error('MCP_ALLOWED_HOSTS must contain comma-separated hostnames only, without schemes, ports, or wildcards.');
+    }
+    allowedHosts.push(hostname.toLowerCase());
+  }
   const configuredOrigins = (env.MCP_ALLOWED_ORIGIN_HOSTS || '').split(',').map(value => value.trim()).filter(Boolean);
   for (const hostname of configuredOrigins) {
     const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
@@ -221,7 +230,12 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
       const isHealthProbe = request.method === 'GET' && (requestPath === '/healthz' || requestPath === '/readyz');
       const rateRequest = new Request('http://rate-limit.internal/', {
-        headers: { 'x-mcp-rate-limit-key': request.socket.remoteAddress || 'unknown' }
+        headers: {
+          // The Cloudflare Worker overwrites this header from CF-Connecting-IP.
+          // The container is not publicly reachable, so this value comes only
+          // through the trusted Worker-to-Durable-Object path.
+          'x-mcp-rate-limit-key': request.headers['x-mcp-rate-limit-key'] || request.socket.remoteAddress || 'unknown'
+        }
       });
       const rejection = isHealthProbe ? null : networkRateLimit(rateRequest);
       if (rejection) {
