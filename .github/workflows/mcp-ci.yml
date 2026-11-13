@@ -138,7 +138,7 @@ jobs:
         env:
           REACT_REVIEW_ROOT: ${{ github.workspace }}
         run: |
-          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern node server/index.mjs --method tools/list --format json
+          npx --yes @modelcontextprotocol/inspector@2.14.0 --cli --protocol-era modern -e REACT_REVIEW_ROOT=$REACT_REVIEW_ROOT node server/index.mjs --method tools/list --format json
 
       - name: MCP Streamable HTTP server/discover, tools/list, and tools/call integration test
         working-directory: ${{ steps.source.outputs.package_dir }}
