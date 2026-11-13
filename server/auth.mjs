@@ -103,7 +103,7 @@ export function createJwtTokenVerifier({ issuer, resource, jwks }) {
 }
 
 function safeErrorDescription(value) {
-  return String(value).replace(/[^\x20-\x21\x23-\x5B\x5D-\x7E]/g, ' ').slice(0, 180);
+  return String(value).replace(/[^a-zA-Z0-9 .,:;_'-]/g, ' ').slice(0, 180);
 }
 
 export function createOAuthRuntime(env = process.env, { jwks } = {}) {
