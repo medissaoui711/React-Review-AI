@@ -182,17 +182,19 @@ test('remote JWKS refresh accepts rotated signing keys and surfaces provider out
     const address = jwksServer.address();
     const remoteJwks = createRemoteJWKSet(
       new URL(`http://127.0.0.1:${address.port}/jwks`),
-      { timeoutDuration: 1000, cooldownDuration: 0, cacheMaxAge: 300_000 }
+      { timeoutDuration: 1000, cooldownDuration: 1, cacheMaxAge: 300_000 }
     );
     const verifier = createJwtTokenVerifier({ issuer, resource, jwks: remoteJwks });
 
     const firstToken = await tokenFor(first.privateKey, { kid: 'rotation-key-a' });
     assert.equal((await verifier.verifyAccessToken(firstToken)).clientId, 'test-user');
 
+    await new Promise(resolve => setTimeout(resolve, 5));
     activeKeys = { keys: [second.publicJwk] };
     const secondToken = await tokenFor(second.privateKey, { kid: 'rotation-key-b' });
     assert.equal((await verifier.verifyAccessToken(secondToken)).clientId, 'test-user');
 
+    await new Promise(resolve => setTimeout(resolve, 5));
     unavailable = true;
     const thirdToken = await tokenFor(third.privateKey, { kid: 'rotation-key-c' });
     await assert.rejects(
@@ -200,6 +202,7 @@ test('remote JWKS refresh accepts rotated signing keys and surfaces provider out
       error => !(error instanceof OAuthError)
     );
 
+    await new Promise(resolve => setTimeout(resolve, 5));
     unavailable = false;
     activeKeys = { keys: [third.publicJwk] };
     assert.equal((await verifier.verifyAccessToken(thirdToken)).clientId, 'test-user');
