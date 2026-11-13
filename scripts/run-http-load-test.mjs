@@ -65,8 +65,9 @@ async function worker() {
         }),
         signal: AbortSignal.timeout(options.timeoutMs)
       });
-      const body = await response.json();
-      assert.equal(response.status, 200, `HTTP status ${response.status}`);
+      const rawBody = await response.text();
+      assert.equal(response.status, 200, `HTTP status ${response.status}: ${rawBody.slice(0, 300)}`);
+      const body = JSON.parse(rawBody);
       assert.equal(body.jsonrpc, '2.0');
       assert.equal(body.result?.resultType, 'complete');
       assert.deepEqual(body.result?.tools?.map(tool => tool.name).sort(), [
