@@ -153,6 +153,7 @@ The `.github/workflows/security-supply-chain.yml` workflow provides:
 - CodeQL analysis for JavaScript/TypeScript and GitHub Actions workflows.
 - Pull-request dependency review that blocks newly introduced high or critical vulnerabilities.
 - `npm audit` against the complete locked dependency tree.
+- Dependency Review on pull requests; this check requires GitHub Dependency Graph to be enabled. It is currently blocked by the repository setting (see the Phase 3.7 owner-actions checklist).
 - Zod is pinned to `4.6.7`; the initial high-severity advisory affecting `4.2.0` was fixed, and the latest security workflow reported zero vulnerabilities.
 - A CycloneDX SBOM and a machine-readable license inventory generated from `package-lock.json`.
 - Workflow artifacts containing the SBOM and license inventory, retained for 30 days.
