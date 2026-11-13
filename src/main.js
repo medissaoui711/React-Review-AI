@@ -144,9 +144,9 @@ app.innerHTML = `
           <div><div class="eyebrow">CONNECTION READINESS</div><h2 id="integration-title">MCP integration</h2><p>Frontend configuration is separated from authentication and backend availability.</p></div>
           <span class="count">CONFIGURATION</span>
         </div>
-        <div class="connection-card" data-connection-state="${mcpConfiguration.state}" role="status" aria-live="polite">
+        <div class="connection-card" data-connection-state="${mcpConfiguration.state}">
           <span class="connection-indicator" aria-hidden="true"></span>
-          <div class="connection-copy">
+          <div class="connection-copy" role="status" aria-live="polite">
             <h3>${mcpConfiguration.title}</h3>
             <p>${mcpConfiguration.detail}</p>
           </div>
