@@ -32,7 +32,7 @@ const outputSchemas = {
     file: z.string(), mode: z.string(), summary: summarySchema,
     findings: z.array(findingSchema), parse_error: z.object({
       message: z.string(), line: z.number().nullable(), column: z.number().nullable()
-    }).nullable(), skipped_reason: z.string().nullable()
+    }).nullable(), skipped_reason: z.string().nullable(), timed_out: z.boolean().optional()
   }).passthrough() }),
   run_test_audit: z.object({ data: z.object({
     mode: z.string(), test_file_count: z.number(), test_files: z.array(z.string()),
