@@ -13,7 +13,7 @@ async function withHttpServer(run, envOverrides = {}) {
   await mkdir(root, { recursive: true });
   const previousRoot = process.env.REACT_REVIEW_ROOT;
   process.env.REACT_REVIEW_ROOT = root;
-  const runtime = createHttpServer({ ...envOverrides, REACT_REVIEW_ROOT: root });
+  const runtime = createHttpServer({ ...process.env, ...envOverrides, REACT_REVIEW_ROOT: root });
 
   try {
     await new Promise((resolve, reject) => {
