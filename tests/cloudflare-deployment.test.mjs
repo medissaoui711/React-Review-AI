@@ -125,6 +125,8 @@ test('Cloudflare Worker enforces explicit-origin CORS for browser MCP and OAuth 
   assert.match(worker, /requestedMethod !== expectedMethod/);
   assert.match(worker, /isMcpRoute \? "POST" : "GET"/);
   assert.match(worker, /requestedHeaders\.some\(\(header\) => !CORS_ALLOWED_HEADERS\.has\(header\)\)/);
+  assert.match(worker, /"mcp-method"/);
+  assert.match(worker, /"mcp-name"/);
   assert.match(worker, /isResourceMetadata/);
   assert.match(worker, /return respond\(await stub\.fetch\(forwarded\)\)/);
   assert.doesNotMatch(worker, /Access-Control-Allow-Origin["']?,\s*["']\*["']/);
@@ -141,6 +143,13 @@ test('static dashboard exposes safe MCP configuration readiness without claiming
   assert.match(main, /!== "\/mcp"/);
   assert.match(main, /authentication, CORS, and live MCP connectivity have not been verified/i);
   assert.match(main, /No access token or client secret is stored/);
-  assert.doesNotMatch(main, /localStorage|sessionStorage/);
-  assert.doesNotMatch(main, /fetch\(/);
+  assert.match(main, /BrowserOAuthProvider/);
+  assert.match(main, /VITE_OAUTH_CLIENT_ID/);
+  assert.match(main, /StreamableHTTPClientTransport/);
+  assert.match(main, /finishAuth\(params\)/);
+  assert.match(main, /sessionStorage/);
+  assert.match(main, /pkce-verifier/);
+  assert.doesNotMatch(main, /localStorage/);
+  assert.doesNotMatch(main, /sessionStorage\.setItem\([^,]*(?:token|access)/i);
+  assert.match(main, /client\.callTool/);
 });
