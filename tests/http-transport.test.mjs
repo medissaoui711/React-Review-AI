@@ -49,6 +49,36 @@ test('HTTP server rejects invalid graceful-shutdown timeout configuration', () =
   );
 });
 
+test('HTTP request logs are correlated and never include authorization headers', async () => {
+  const logs = [];
+  const originalError = console.error;
+  console.error = entry => logs.push(String(entry));
+  try {
+    await withHttpServer(async ({ endpoint }) => {
+      const healthUrl = endpoint.replace('/mcp', '/healthz');
+      const response = await fetch(healthUrl, {
+        headers: { authorization: 'Bearer log-canary-secret' }
+      });
+      const requestId = response.headers.get('x-request-id');
+      assert.match(requestId || '', /^[0-9a-f-]{36}$/i);
+      assert.equal(response.status, 200);
+      await response.text();
+      await new Promise(resolve => setImmediate(resolve));
+
+      const entries = logs.map(entry => JSON.parse(entry));
+      const requestLog = entries.find(entry => entry.request_id === requestId);
+      assert.ok(requestLog);
+      assert.equal(requestLog.event, 'http_request');
+      assert.equal(requestLog.route, 'health');
+      assert.equal(requestLog.method, 'GET');
+      assert.equal(typeof requestLog.duration_ms, 'number');
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.doesNotMatch(logs.join('\n'), /log-canary-secret|authorization|Bearer/i);
+});
+
 test('health and readiness endpoints return minimal operational status', async () => {
   await withHttpServer(async ({ endpoint }) => {
     const base = endpoint.slice(0, -'/mcp'.length);
