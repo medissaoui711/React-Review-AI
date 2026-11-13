@@ -22,6 +22,16 @@ function isLoopback(host) {
   return LOOPBACK_HOSTS.has(host.replace(/^\[|\]$/g, '').toLowerCase());
 }
 
+async function isToolCallRequest(request) {
+  try {
+    const payload = await request.clone().json();
+    const messages = Array.isArray(payload) ? payload : [payload];
+    return messages.some(message => message?.method === 'tools/call');
+  } catch {
+    return false;
+  }
+}
+
 export function createHttpServer(env = process.env, authOptions = {}) {
   const bindHost = env.MCP_HTTP_HOST || '127.0.0.1';
   const allowRemote = env.MCP_HTTP_ALLOW_REMOTE === 'true';
@@ -45,7 +55,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     const validDnsName = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(hostname);
     const validIpv6Name = /^\[[0-9a-f:]+\]$/i.test(hostname);
     if (!validDnsName && !validIpv6Name) {
-      throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, paths, or wildcards.');
+      throw new Error('MCP_ALLOWED_ORIGIN_HOSTS must contain comma-separated hostnames only, without schemes, ports, or wildcards.');
     }
     allowedOrigins.push(hostname);
   }
@@ -105,10 +115,27 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       if (boundedRequest instanceof Response) return boundedRequest;
       const safeRequest = boundedRequest || request;
 
-      if (oauth) {
-        const authInfo = await oauth.authenticate(safeRequest);
-        if (authInfo instanceof Response) return authInfo;
-        return mcp.fetch(safeRequest, { authInfo });
+      // MCP discovery and initialization are intentionally unauthenticated.
+      // Only tools/call requests attempt bearer verification; handlers return
+      // the ChatGPT tool-level auth challenge when no valid AuthInfo is present.
+      if (oauth && await isToolCallRequest(safeRequest)) {
+        const authorization = safeRequest.headers.get('authorization');
+        if (authorization) {
+          const authResult = await oauth.authenticate(safeRequest);
+          if (authResult instanceof Response) {
+            const insufficientScope = authResult.status === 403;
+            return mcp.fetch(safeRequest, {
+              authInfo: {
+                clientId: null,
+                scopes: [],
+                authFailure: {
+                  errorCode: insufficientScope ? 'insufficient_scope' : 'invalid_token'
+                }
+              }
+            });
+          }
+          return mcp.fetch(safeRequest, { authInfo: authResult });
+        }
       }
       return mcp.fetch(safeRequest);
     }
