@@ -129,7 +129,7 @@ jobs:
                 `Tool ${tool.name} must not expose a caller-controlled project root`);
             }
             console.log('TOOL_SCHEMAS=' + JSON.stringify(result.tools.map(({ name, inputSchema }) => ({ name, inputSchema }))));
-            console.log('MCP initialize: PASS');
+            console.log('MCP server/discover: PASS');
             console.log('MCP tools/list: PASS');
             console.log(`Registered tools: ${actual.join(', ')}`);
 
@@ -216,7 +216,7 @@ jobs:
               assert.ok((call.content?.length || 0) > 0 || call.structuredContent);
               console.log(`HTTP tools/call ${name}: PASS`);
             }
-            console.log('MCP Streamable HTTP initialize: PASS');
+            console.log('MCP Streamable HTTP server/discover: PASS');
             console.log('MCP Streamable HTTP tools/list: PASS');
           } finally {
             await client.close();
@@ -240,7 +240,7 @@ jobs:
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name review_component --tool-arg file_path=server/index.mjs --format json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name run_test_audit --format json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern node "$MCP_SERVER_ENTRY" --method tools/call --tool-name audit_accessibility --format json > /dev/null
-          echo "MCP Inspector STDIO initialize/tools/list/all four tools: PASS"
+          echo "MCP Inspector STDIO server/discover/tools/list/all four tools: PASS"
 
           node "$PACKAGE_DIR/server/http.mjs" >/tmp/react-review-ai-inspector-http.log 2>&1 &
           SERVER_PID=$!
@@ -258,7 +258,7 @@ jobs:
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/call --tool-name review_component --tool-arg file_path=server/index.mjs --format json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/call --tool-name run_test_audit --format json > /dev/null
           npx --yes @modelcontextprotocol/inspector --cli --protocol-era modern "http://127.0.0.1:$PORT/mcp" --method tools/call --tool-name audit_accessibility --format json > /dev/null
-          echo "MCP Inspector HTTP initialize/tools/list/all four tools: PASS"
+          echo "MCP Inspector HTTP server/discover/tools/list/all four tools: PASS"
           cat /tmp/react-review-ai-inspector-http.log
 
 
