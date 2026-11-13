@@ -168,7 +168,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
   const nodeHandler = toNodeHandler(guardedHandler);
   const server = createNodeServer(
-    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000 },
+    { maxHeaderSize: 16 * 1024, requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 1_000 },
     (request, response) => {
       const requestPath = new URL(request.url, 'http://localhost').pathname;
       const isHealthProbe = request.method === 'GET' && (requestPath === '/healthz' || requestPath === '/readyz');
