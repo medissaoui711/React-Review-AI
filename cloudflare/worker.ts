@@ -58,6 +58,8 @@ const CORS_ALLOWED_HEADERS = new Set([
   "authorization",
   "content-type",
   "last-event-id",
+  "mcp-method",
+  "mcp-name",
   "mcp-protocol-version",
   "mcp-session-id",
 ]);
@@ -121,7 +123,7 @@ function corsPreflight(request: Request, origin: string | null, expectedMethod: 
     status: 204,
     headers: {
       "Access-Control-Allow-Methods": `${expectedMethod}, OPTIONS`,
-      "Access-Control-Allow-Headers": "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Protocol-Version, Mcp-Session-Id",
+      "Access-Control-Allow-Headers": "Accept, Authorization, Content-Type, Last-Event-ID, Mcp-Method, Mcp-Name, Mcp-Protocol-Version, Mcp-Session-Id",
       "Access-Control-Max-Age": "600",
       "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
     },
