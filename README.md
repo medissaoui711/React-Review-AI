@@ -127,6 +127,12 @@ See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibili
 
 The server performs static, read-only analysis. It does not modify project files, execute project code or tests, calculate actual test coverage, or claim WCAG conformance.
 
+## HTTP observability and privacy
+
+The HTTP transport writes one JSON log record per completed or aborted request to stderr. Each request receives a server-generated `X-Request-Id` response header. Logs contain only the request ID, HTTP method, a fixed low-cardinality route label, status code, and elapsed milliseconds. They do not include request URLs or query strings, client IP addresses, request/response bodies, cookies, Authorization headers, bearer tokens, or OAuth claims. Health endpoints return only minimal status and are not a metrics or diagnostics surface.
+
+A public metrics endpoint is intentionally not exposed. Production metrics export, alert delivery, retention policy, and log aggregation still require deployment-level integration and an explicit access boundary; they are not claimed as completed by this repository workflow.
+
 ## Security and supply-chain automation
 
 The `.github/workflows/security-supply-chain.yml` workflow provides:
