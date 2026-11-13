@@ -29,6 +29,28 @@ async function withHttpServer(run) {
   }
 }
 
+test('HTTP server applies explicit keep-alive and shutdown timeout limits', () => {
+  const previousRoot = process.env.REACT_REVIEW_ROOT;
+  const runtime = createHttpServer({
+    ...process.env,
+    REACT_REVIEW_ROOT: previousRoot || process.cwd(),
+    MCP_SHUTDOWN_TIMEOUT_MS: '2500'
+  });
+  try {
+    assert.equal(runtime.server.keepAliveTimeout, 5000);
+    assert.equal(runtime.server.maxRequestsPerSocket, 1000);
+  } finally {
+    void runtime.close();
+  }
+});
+
+test('HTTP server rejects invalid graceful-shutdown timeout configuration', () => {
+  assert.throws(
+    () => createHttpServer({ MCP_SHUTDOWN_TIMEOUT_MS: '0' }),
+    /MCP_SHUTDOWN_TIMEOUT_MS must be a positive integer/
+  );
+});
+
 test('health and readiness endpoints return minimal operational status', async () => {
   await withHttpServer(async ({ endpoint }) => {
     const base = endpoint.slice(0, -'/mcp'.length);
