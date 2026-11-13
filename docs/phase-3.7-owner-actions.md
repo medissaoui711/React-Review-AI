@@ -6,7 +6,7 @@ This checklist records items that require repository-owner decisions, repository
 
 - [ ] Keep repository visibility as currently configured (public). No visibility change is requested.
 - [ ] Enable and verify GitHub secret scanning and push protection, where available for this repository.
-- [ ] Verify the dependency graph is enabled so Dependency Review can compare pull-request dependency changes.
+- [ ] Enable the GitHub Dependency Graph so Dependency Review can compare pull-request dependency changes. PR #6 confirmed it is currently disabled: the Dependency Review action exits with “Dependency review is not supported on this repository”. This setting has not been changed.
 - [ ] Configure a main ruleset or branch protection policy after the required CI check names have been observed on a real run:
   - require pull requests before merging;
   - require at least one approving review;
