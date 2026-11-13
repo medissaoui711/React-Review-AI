@@ -158,7 +158,8 @@ test('health and readiness endpoints return minimal operational status', async (
     await wrongMethod.text();
     const metrics = getMetrics();
     assert.equal(metrics.counters.http_requests_total, 3);
-    assert.equal(metrics.http_requests_by_route.health, 3);
+    assert.equal(metrics.http_requests_by_route.health, 2);
+    assert.equal(metrics.http_requests_by_route.readiness, 1);
     assert.equal(metrics.http_requests_by_status_class['2xx'], 2);
     assert.equal(metrics.http_requests_by_status_class['4xx'], 1);
   });
