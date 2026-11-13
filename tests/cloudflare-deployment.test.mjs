@@ -27,13 +27,15 @@ test('Cloudflare config binds a basic Durable Object-managed container', async (
   assert.doesNotMatch(config, /wrangler\.toml|wrangler\.jsonc/);
 });
 
-test('public Worker exposes only the intended MCP and health routes', async () => {
+test('public Worker serves liveness and OAuth metadata at the edge without starting the Container', async () => {
   const worker = await read('cloudflare/worker.ts');
-  for (const route of ['/mcp', '/.well-known/oauth-protected-resource', '/healthz', '/readyz']) {
-    assert.ok(worker.includes(route), `Missing route ${route}`);
-  }
-  assert.match(worker, /OAUTH_ISSUER_URL/);
-  assert.match(worker, /OAUTH_JWKS_URL/);
+  assert.match(worker, /if \(url\.pathname === "\/healthz"\)/);
+  assert.match(worker, /publicMetadata\(request, env\)/);
+  assert.match(worker, /authorization_servers: \[env\.OAUTH_ISSUER_URL\]/);
+  assert.match(worker, /scopes_supported: \[env\.OAUTH_REQUIRED_SCOPE \|\| "review:read"\]/);
+  assert.match(worker, /url\.pathname !== "\/mcp"/);
+  assert.doesNotMatch(worker, /\["\/readyz", "GET"\]/);
+  assert.doesNotMatch(worker, /const ROUTES/);
   assert.match(worker, /Public demo authentication is not configured/);
   assert.match(worker, /headers\.delete\("x-mcp-rate-limit-key"\)/);
   assert.match(worker, /cf-connecting-ip/);
@@ -45,6 +47,18 @@ test('public Worker exposes only the intended MCP and health routes', async () =
   assert.doesNotMatch(worker, /enableInternet: true/);
   assert.match(worker, /getTcpPort\(PORT\)\.fetch/);
   assert.match(worker, /REACT_REVIEW_ROOT: "\/app\/demo-project"/);
+  assert.match(worker, /http:\/\/container\/readyz/);
+});
+
+test('JWKS egress permits only the exact configured canonical HTTPS URL and GET', async () => {
+  const worker = await read('cloudflare/worker.ts');
+  assert.match(worker, /expected\.protocol !== "https:"/);
+  assert.match(worker, /expected\.username !== ""/);
+  assert.match(worker, /expected\.password !== ""/);
+  assert.match(worker, /expected\.hash !== ""/);
+  assert.match(worker, /request\.method !== "GET"/);
+  assert.match(worker, /actual\.href !== expected\.href/);
+  assert.match(worker, /redirect: "manual"/);
 });
 
 test('HTTP host and rate-limit controls accept only explicit Cloudflare forwarding inputs', async () => {
@@ -65,7 +79,8 @@ test('demo fixture is a fixed read-only React review target', async () => {
 
 test('Cloudflare deployment remains manual and is not triggered by CI', async () => {
   const workflow = await read('.github/workflows/mcp-ci.yml');
-  assert.match(workflow, /phase-demo-cloudflare/);
+  assert.match(workflow, /branches: \[main, phase-3\.2-secure-file-access/);
+  assert.match(workflow, /phase-demo-cloudflare-d4-readiness/);
   assert.match(workflow, /cloudflare:build/);
   assert.doesNotMatch(workflow, /cf deploy/);
 });
