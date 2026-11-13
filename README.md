@@ -138,7 +138,7 @@ The MCP CI workflow runs a bounded synthetic project scan (100 JSX files, approx
 
 ## Production certification status
 
-Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector Web UI manual validation and deployment-level monitoring remain owner-controlled gates. The Inspector CLI v2.14.0 modern protocol checks pass on both STDIO and Streamable HTTP in CI; the strict schema portability check has zero errors, with warnings limited to nullable JSON Schema type arrays. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
+Repository settings, legal licensing choices, live OAuth/ChatGPT validation, MCP Inspector Web UI manual validation and deployment-level monitoring remain owner-controlled gates. The Inspector CLI v2.14.0 modern protocol checks pass on both STDIO and Streamable HTTP in CI; strict schema portability checks report zero errors and zero warnings. See the [Phase 3.7 certification matrix](docs/phase-3.7-certification-matrix.md) for evidence status and [owner actions](docs/phase-3.7-owner-actions.md) for the exact pending checklist. The implementation does not claim production certification until those external gates have evidence.
 
 ## HTTP observability and privacy
 
