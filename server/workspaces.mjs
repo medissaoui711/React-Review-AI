@@ -271,6 +271,7 @@ export class WorkspaceManager {
     this.#closed = true;
     clearInterval(this.#sweepTimer);
     this.#workspaces.clear();
+    this.#creatingByUser.clear();
     try { await rm(await this.#rootPromise, { recursive: true, force: true }); } catch { /* Temporary root may not have been created. */ }
   }
 }
