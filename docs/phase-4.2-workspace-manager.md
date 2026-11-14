@@ -56,6 +56,7 @@ For authenticated HTTP calls, workspace_id is required in practice. review_compo
 | Total uncompressed content | 20 MB |
 | Directory depth | 20 |
 | Workspaces per user | 3 |
+| Active workspaces per process | 25 |
 | Workspace lifetime | 30 minutes |
 
 Additional controls:
