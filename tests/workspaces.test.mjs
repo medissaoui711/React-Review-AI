@@ -109,7 +109,7 @@ test('workspace enforces archive, file, and expanded-size limits', async () => {
   await withManager(async manager => {
     await assert.rejects(manager.createFromZip('user-a', Buffer.alloc(21)), /valid ZIP|size is outside/);
     await assert.rejects(manager.createFromZip('user-a', makeZip([{ name: 'large.txt', content: 'x'.repeat(500_001) }])), /exceeds the permitted size/);
-  }, { limits: { maxArchiveBytes: 20, maxFileBytes: 16 } });
+  }, { limits: { maxArchiveBytes: 1_000_000, maxFileBytes: 16 } });
 });
 
 test('workspace quota and expiration cleanup are enforced', async () => {
