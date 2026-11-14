@@ -96,7 +96,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const metrics = createRuntimeMetrics();
   const workspaceManager = new WorkspaceManager();
   const isReady = async () => {
-    if (await workspaceManager.ready()) return true;
+    if (oauth) return workspaceManager.ready();
     try { await createReviewService(env.REACT_REVIEW_ROOT); return true; }
     catch { return false; }
   };
