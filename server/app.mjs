@@ -2,8 +2,6 @@ import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { createReviewService } from './review.mjs';
 import { readAuthConfig } from './auth.mjs';
-import { createReviewService } from './review.mjs';
-import { WorkspaceManager } from './workspaces.mjs';
 
 const SERVER_INFO = { name: 'react-review-ai', version: '0.6.0' };
 const findingSchema = z.object({
