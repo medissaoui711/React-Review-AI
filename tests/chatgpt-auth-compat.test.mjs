@@ -89,17 +89,12 @@ function makeProjectZip(name, source) {
 
 async function withOAuthServer(run) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-phase-3-6-'));
-  const root = path.join(parent, 'project');
-  await mkdir(root, { recursive: true });
-  await writeFile(path.join(root, 'Sample.jsx'), 'export function Sample() { return <img src="/x.png" />; }');
   const previous = {
-    REACT_REVIEW_ROOT: process.env.REACT_REVIEW_ROOT,
     OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
     OAUTH_JWKS_URL: process.env.OAUTH_JWKS_URL,
     MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
     OAUTH_REQUIRED_SCOPE: process.env.OAUTH_REQUIRED_SCOPE
   };
-  process.env.REACT_REVIEW_ROOT = root;
   process.env.OAUTH_ISSUER_URL = issuer;
   process.env.OAUTH_JWKS_URL = 'https://identity.example.test/.well-known/jwks.json';
   process.env.MCP_PUBLIC_URL = resource;
@@ -107,7 +102,6 @@ async function withOAuthServer(run) {
   const identity = await createTestIdentity();
   const runtime = createHttpServer({
     NODE_ENV: 'test',
-    REACT_REVIEW_ROOT: root,
     OAUTH_ISSUER_URL: issuer,
     OAUTH_JWKS_URL: 'https://identity.example.test/.well-known/jwks.json',
     MCP_PUBLIC_URL: resource,
