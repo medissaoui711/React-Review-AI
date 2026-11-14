@@ -121,7 +121,7 @@ function registerReadOnlyTool(server, name, config, handler, oauth) {
 export async function createServer({ metrics, env = process.env, workspaceManager } = {}) {
   const manager = workspaceManager ?? null;
   const oauth = oauthToolConfig(env);
-  const localReview = (!manager || !oauth) && env.REACT_REVIEW_ROOT
+  const localReview = (!manager || !oauth.enabled) && env.REACT_REVIEW_ROOT
     ? await createReviewService(env.REACT_REVIEW_ROOT, { metrics })
     : null;
   const resolveReview = async (args, context) => {
