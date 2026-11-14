@@ -93,6 +93,7 @@ export function createJwtTokenVerifier({ issuer, resource, jwks }) {
       return {
         token,
         clientId: typeof payload.client_id === 'string' ? payload.client_id : payload.sub,
+        userId: payload.sub,
         scopes: readScopes(payload),
         expiresAt: payload.exp,
         resource: expectedResource
