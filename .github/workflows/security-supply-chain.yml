@@ -6,7 +6,6 @@ on:
       - main
       - phase-3.7-production-hardening
       - phase-3.8-frontend-integration-readiness
-      - phase-4.3-security-isolation
   pull_request:
     branches:
       - main
