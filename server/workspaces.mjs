@@ -155,6 +155,7 @@ function extractEntry(archive, entry) {
 export class WorkspaceManager {
   #rootPromise;
   #workspaces = new Map();
+  #creatingByUser = new Map();
   #limits;
   #sweepTimer;
   #closed = false;
@@ -176,14 +177,19 @@ export class WorkspaceManager {
     if (typeof userId !== 'string' || !userId.trim()) throw new Error('Authenticated user identity is required.');
     const entries = readZipEntries(archive, this.#limits);
     await this.cleanupExpired();
-    const activeForUser = [...this.#workspaces.values()].filter(item => item.userId === userId);
-    if (activeForUser.length >= this.#limits.maxWorkspacesPerUser) throw new Error('The user workspace quota has been reached.');
+    const activeForUser = [...this.#workspaces.values()].filter(item => item.userId === userId).length;
+    const creating = this.#creatingByUser.get(userId) ?? 0;
+    if (activeForUser + creating >= this.#limits.maxWorkspacesPerUser) {
+      throw new Error('The user workspace quota has been reached.');
+    }
+    this.#creatingByUser.set(userId, creating + 1);
 
-    const root = await this.#rootPromise;
-    const id = randomUUID();
-    const workspacePath = path.join(root, id);
-    await mkdir(workspacePath, { recursive: false, mode: 0o700 });
+    let workspacePath;
     try {
+      const root = await this.#rootPromise;
+      const id = randomUUID();
+      workspacePath = path.join(root, id);
+      await mkdir(workspacePath, { recursive: false, mode: 0o700 });
       for (const entry of entries) {
         const destination = path.resolve(workspacePath, entry.relativePath);
         if (destination !== workspacePath && !destination.startsWith(workspacePath + path.sep)) {
@@ -217,8 +223,12 @@ export class WorkspaceManager {
         }
       });
     } catch (error) {
-      await rm(workspacePath, { recursive: true, force: true });
+      if (workspacePath) await rm(workspacePath, { recursive: true, force: true });
       throw error;
+    } finally {
+      const pending = (this.#creatingByUser.get(userId) ?? 1) - 1;
+      if (pending > 0) this.#creatingByUser.set(userId, pending);
+      else this.#creatingByUser.delete(userId);
     }
   }
 
