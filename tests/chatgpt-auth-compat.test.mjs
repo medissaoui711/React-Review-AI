@@ -276,6 +276,7 @@ test('OAuth workspace operations enforce tenant isolation for upload, tool acces
       });
       assert.equal(upload.status, 201);
       workspaceId = (await upload.json()).workspace_id;
+      const deletedWorkspaceId = workspaceId;
 
       const foreignToolCall = await otherClient.callTool({
         name: 'review_project',
@@ -299,7 +300,7 @@ test('OAuth workspace operations enforce tenant isolation for upload, tool acces
 
       const ownerAfterDelete = await ownerClient.callTool({
         name: 'review_project',
-        arguments: { workspace_id: (await upload.json().catch(() => ({}))).workspace_id }
+        arguments: { workspace_id: deletedWorkspaceId }
       });
       assert.equal(ownerAfterDelete.isError, true);
     } finally {
