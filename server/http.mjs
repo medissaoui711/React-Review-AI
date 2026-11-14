@@ -198,6 +198,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
         nodeRequest.once('end', () => {
           if (!tooLarge) resolve({ body: Buffer.concat(chunks, received) });
         });
+        nodeRequest.once('aborted', () => reject(new Error('Workspace upload request was aborted.')));
         nodeRequest.once('error', reject);
       });
       if (bodyResult.tooLarge) {
@@ -222,7 +223,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       nodeRequest.resume();
       const deleted = await workspaceManager.delete(authInfo.userId, workspaceItem[1]);
       nodeResponse.writeHead(deleted ? 204 : 404, { 'Cache-Control': 'no-store' });
-      nodeResponse.end(deleted ? undefined : 'Workspace not found.');
+      nodeResponse.end(deleted ? '' : 'Workspace not found.');
       return;
     }
 
