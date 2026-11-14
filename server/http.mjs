@@ -41,7 +41,6 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const allowRemote = env.MCP_HTTP_ALLOW_REMOTE === 'true';
   const remoteBind = !isLoopback(bindHost);
   const oauth = createOAuthRuntime(env, authOptions);
-  const workspaceManager = new WorkspaceManager();
 
   if (remoteBind && !allowRemote) {
     throw new Error('Non-loopback HTTP binding requires MCP_HTTP_ALLOW_REMOTE=true.');
@@ -95,6 +94,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 4);
   let activeRequests = 0;
   const metrics = createRuntimeMetrics();
+  const workspaceManager = new WorkspaceManager();
   const isReady = async () => {
     if (await workspaceManager.ready()) return true;
     try { await createReviewService(env.REACT_REVIEW_ROOT); return true; }
@@ -120,6 +120,11 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       if (originRejection) return originRejection;
 
       if (isWorkspaceCollection || workspaceItem) {
+        const workspaceRateLimit = rateLimit(request);
+        if (workspaceRateLimit) {
+          metrics.recordRateLimit();
+          return workspaceRateLimit;
+        }
         if (!oauth) return new Response('Authentication is required.', { status: 401, headers: { 'Cache-Control': 'no-store' } });
         let authInfo;
         try {
