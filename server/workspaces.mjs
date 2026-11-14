@@ -77,8 +77,12 @@ function readZipEntries(archive, limits) {
   let totalBytes = 0;
 
   for (let index = 0; index < entryCount; index += 1) {
-    if (offset + 46 > archive.length || archive.readUInt32LE(offset) !== 0x02014b50) {
-      throw new Error('Archive central directory is malformed.');
+    if (offset + 46 > archive.length) {
+      throw new Error('Archive central directory is truncated.');
+    }
+    const centralSignature = archive.readUInt32LE(offset);
+    if (centralSignature !== 0x02014b50) {
+      throw new Error('Archive central directory signature is invalid at offset ' + offset + ' (0x' + centralSignature.toString(16) + ').');
     }
     const madeBy = archive.readUInt16LE(offset + 4);
     const flags = archive.readUInt16LE(offset + 8);
