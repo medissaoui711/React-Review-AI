@@ -11,6 +11,7 @@ const DEFAULT_LIMITS = Object.freeze({
   maxTotalBytes: 20_000_000,
   ttlMs: 30 * 60_000,
   maxWorkspacesPerUser: 3,
+  maxWorkspacesTotal: 25,
   maxDepth: 20
 });
 
@@ -34,7 +35,9 @@ function safeArchivePath(rawName, maxDepth = 20) {
   }
   if (segments.some(segment => segment.length > 255)) throw new Error('Archive contains an overlong path segment.');
   if (segments.length > maxDepth) throw new Error('Archive path exceeds the permitted directory depth.');
-  return { relativePath: segments.join(path.sep), isDirectory };
+  const relativePath = segments.join(path.sep);
+  if (Buffer.byteLength(relativePath, 'utf8') > 1_024) throw new Error('Archive path exceeds the permitted length.');
+  return { relativePath, isDirectory };
 }
 
 function findEndOfCentralDirectory(archive) {
@@ -105,6 +108,9 @@ function readZipEntries(archive, limits) {
     const hostSystem = madeBy >>> 8;
     const unixMode = hostSystem === 3 ? externalAttributes >>> 16 : 0;
     const fileType = unixMode & 0xf000;
+    if ((externalAttributes & 0x0400) !== 0 || (externalAttributes & 0x0010) !== 0 && !safe.isDirectory) {
+      throw new Error('Archive contains a link, reparse point, or inconsistent directory entry.');
+    }
     if (fileType === 0xa000 || (fileType !== 0 && fileType !== 0x8000 && fileType !== 0x4000)) {
       throw new Error('Archive contains a link or special filesystem entry.');
     }
@@ -191,6 +197,10 @@ export class WorkspaceManager {
     await this.cleanupExpired();
     const activeForUser = [...this.#workspaces.values()].filter(item => item.userId === userId).length;
     const creating = this.#creatingByUser.get(userId) ?? 0;
+    const pendingTotal = [...this.#creatingByUser.values()].reduce((sum, count) => sum + count, 0);
+    if (this.#workspaces.size + pendingTotal >= this.#limits.maxWorkspacesTotal) {
+      throw new Error('The server workspace capacity has been reached.');
+    }
     if (activeForUser + creating >= this.#limits.maxWorkspacesPerUser) {
       throw new Error('The user workspace quota has been reached.');
     }
@@ -231,6 +241,7 @@ export class WorkspaceManager {
           max_entries: this.#limits.maxEntries,
           max_file_bytes: this.#limits.maxFileBytes,
           max_total_bytes: this.#limits.maxTotalBytes,
+          max_workspaces_total: this.#limits.maxWorkspacesTotal,
           max_depth: this.#limits.maxDepth,
           ttl_ms: this.#limits.ttlMs
         }
