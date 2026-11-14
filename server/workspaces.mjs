@@ -10,7 +10,8 @@ const DEFAULT_LIMITS = Object.freeze({
   maxFileBytes: 500_000,
   maxTotalBytes: 20_000_000,
   ttlMs: 30 * 60_000,
-  maxWorkspacesPerUser: 3
+  maxWorkspacesPerUser: 3,
+  maxDepth: 20
 });
 
 function crc32(buffer) {
@@ -32,6 +33,7 @@ function safeArchivePath(rawName) {
     throw new Error('Archive contains a path traversal entry.');
   }
   if (segments.some(segment => segment.length > 255)) throw new Error('Archive contains an overlong path segment.');
+  if (segments.length > 20) throw new Error('Archive path exceeds the permitted directory depth.');
   return { relativePath: segments.join(path.sep), isDirectory };
 }
 
@@ -105,6 +107,9 @@ function readZipEntries(archive, limits) {
     if (fileType === 0xa000 || (fileType !== 0 && fileType !== 0x8000 && fileType !== 0x4000)) {
       throw new Error('Archive contains a link or special filesystem entry.');
     }
+    if ((fileType === 0x4000) !== safe.isDirectory && fileType !== 0) {
+      throw new Error('Archive entry type does not match its path.');
+    }
     if (safe.isDirectory && uncompressedSize !== 0) throw new Error('Archive directory entries must be empty.');
     if (!safe.isDirectory && (uncompressedSize > limits.maxFileBytes || uncompressedSize > limits.maxTotalBytes)) {
       throw new Error('An archive file exceeds the permitted size.');
@@ -113,7 +118,7 @@ function readZipEntries(archive, limits) {
     if (totalBytes > limits.maxTotalBytes) throw new Error('Archive expands beyond the permitted total size.');
 
     entries.push({
-      ...safe, expectedCrc, compressedSize, uncompressedSize, method, localOffset
+      ...safe, rawName, expectedCrc, compressedSize, uncompressedSize, method, localOffset, centralOffset
     });
     offset = end;
   }
@@ -126,11 +131,17 @@ function extractEntry(archive, entry) {
   if (offset + 30 > archive.length || archive.readUInt32LE(offset) !== 0x04034b50) {
     throw new Error('Archive local file header is malformed.');
   }
+  const localFlags = archive.readUInt16LE(offset + 6);
+  const localMethod = archive.readUInt16LE(offset + 8);
   const nameLength = archive.readUInt16LE(offset + 26);
   const extraLength = archive.readUInt16LE(offset + 28);
+  const localName = new TextDecoder('utf-8', { fatal: true }).decode(archive.subarray(offset + 30, offset + 30 + nameLength));
+  if (localName !== entry.rawName || localMethod !== entry.method || localFlags !== archive.readUInt16LE(entry.localOffset + 6)) {
+    throw new Error('Archive local and central headers do not match.');
+  }
   const dataStart = offset + 30 + nameLength + extraLength;
   const dataEnd = dataStart + entry.compressedSize;
-  if (dataEnd > archive.length) throw new Error('Archive entry data is truncated.');
+  if (dataEnd > entry.centralOffset || dataEnd > archive.length) throw new Error('Archive entry data is truncated or overlaps its directory.');
   const compressed = archive.subarray(dataStart, dataEnd);
   const output = entry.method === 0
     ? Buffer.from(compressed)
