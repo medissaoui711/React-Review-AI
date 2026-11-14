@@ -33,7 +33,15 @@ async function createTestIdentity() {
     .setIssuedAt()
     .setExpirationTime('5m')
     .sign(privateKey);
-  return { jwks, token, insufficientToken };
+  const secondUserToken = await new SignJWT({ scope: 'review:read' })
+    .setProtectedHeader({ alg: 'RS256', kid: 'phase-3-6-key' })
+    .setIssuer(issuer)
+    .setSubject('phase-4-3-user-b')
+    .setAudience(resource)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  return { jwks, token, insufficientToken, secondUserToken };
 }
 
 function zipCrc32(buffer) {
@@ -250,5 +258,110 @@ test('invalid bearer token does not block server discovery or tools/list but pro
     } finally {
       await client.close();
     }
+  });
+});
+
+
+test('OAuth workspace operations enforce tenant isolation for upload, tool access, and deletion', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, token, secondUserToken, workspaceArchive }) => {
+    const ownerClient = await connectClient(endpoint, token);
+    const otherClient = await connectClient(endpoint, secondUserToken);
+    const base = endpoint.slice(0, -'/mcp'.length);
+    let workspaceId;
+    try {
+      const upload = await fetch(base + '/workspaces', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + token, 'content-type': 'application/zip' },
+        body: workspaceArchive
+      });
+      assert.equal(upload.status, 201);
+      workspaceId = (await upload.json()).workspace_id;
+      const deletedWorkspaceId = workspaceId;
+
+      const foreignToolCall = await otherClient.callTool({
+        name: 'review_project',
+        arguments: { workspace_id: workspaceId }
+      });
+      assert.equal(foreignToolCall.isError, true);
+      assert.match(foreignToolCall.content?.[0]?.text || '', /not found or access denied/);
+
+      const foreignDelete = await fetch(base + '/workspaces/' + workspaceId, {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer ' + secondUserToken }
+      });
+      assert.equal(foreignDelete.status, 404);
+
+      const ownerDelete = await fetch(base + '/workspaces/' + workspaceId, {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer ' + token }
+      });
+      assert.equal(ownerDelete.status, 204);
+      workspaceId = null;
+
+      const ownerAfterDelete = await ownerClient.callTool({
+        name: 'review_project',
+        arguments: { workspace_id: deletedWorkspaceId }
+      });
+      assert.equal(ownerAfterDelete.isError, true);
+    } finally {
+      if (workspaceId) {
+        await fetch(base + '/workspaces/' + workspaceId, {
+          method: 'DELETE',
+          headers: { authorization: 'Bearer ' + token }
+        });
+      }
+      await ownerClient.close();
+      await otherClient.close();
+    }
+  });
+});
+
+test('workspace upload rejects missing auth, insufficient scope, invalid media types, and invalid origins', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, token, insufficientToken, workspaceArchive }) => {
+    const base = endpoint.slice(0, -'/mcp'.length);
+    const anonymous = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/zip' },
+      body: workspaceArchive
+    });
+    assert.equal(anonymous.status, 401);
+
+    const insufficient = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + insufficientToken, 'content-type': 'application/zip' },
+      body: workspaceArchive
+    });
+    assert.equal(insufficient.status, 403);
+
+    const invalidMedia = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + token, 'content-type': 'text/plain' },
+      body: workspaceArchive
+    });
+    assert.equal(invalidMedia.status, 415);
+
+    const invalidOrigin = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + token,
+        'content-type': 'application/zip',
+        origin: 'https://attacker.example.test'
+      },
+      body: workspaceArchive
+    });
+    assert.equal(invalidOrigin.status, 403);
+  });
+});
+
+test('workspace upload rejects malformed ZIP bodies without creating a workspace', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, token }) => {
+    const base = endpoint.slice(0, -'/mcp'.length);
+    const invalid = await fetch(base + '/workspaces', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + token, 'content-type': 'application/zip' },
+      body: Buffer.from('not a zip archive')
+    });
+    assert.equal(invalid.status, 400);
+    assert.match(await invalid.text(), /valid ZIP|size is outside the permitted limit/);
   });
 });
