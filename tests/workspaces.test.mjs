@@ -117,11 +117,11 @@ test('workspace quota and expiration cleanup are enforced', async () => {
     const archive = makeZip([{ name: 'README.md', content: 'demo' }]);
     const first = await manager.createFromZip('user-a', archive);
     await assert.rejects(manager.createFromZip('user-a', archive), /quota has been reached/);
-    await manager.cleanupExpired(Date.now() + 10_000);
+    await manager.cleanupExpired(Date.now() + 120_000);
     await assert.rejects(manager.resolve('user-a', first.workspace_id), /not found or access denied/);
     const second = await manager.createFromZip('user-a', archive);
     assert.ok(second.workspace_id);
-  }, { limits: { maxWorkspacesPerUser: 1, ttlMs: 5 } });
+  }, { limits: { maxWorkspacesPerUser: 1, ttlMs: 60_000 } });
 });
 
 test('workspace manager refuses missing authenticated identities', async () => {
