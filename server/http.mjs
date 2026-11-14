@@ -12,6 +12,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
 import { createReviewService } from './review.mjs';
 import { createRuntimeMetrics } from './metrics.mjs';
+import { WorkspaceManager } from './workspaces.mjs';
 import {
   createOAuthRuntime,
   createRequestRateLimiter,
@@ -93,15 +94,147 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const maxConcurrentRequests = readPositiveLimit('MCP_MAX_CONCURRENT_REQUESTS', 4);
   let activeRequests = 0;
   const metrics = createRuntimeMetrics();
+  const workspaceManager = new WorkspaceManager();
   const isReady = async () => {
-    try {
-      await createReviewService(env.REACT_REVIEW_ROOT);
-      return true;
-    } catch {
-      return false;
-    }
+    if (oauth) return workspaceManager.ready();
+    try { await createReviewService(env.REACT_REVIEW_ROOT); return true; }
+    catch { return false; }
   };
-  const mcp = createMcpHandler(() => createServer({ metrics, env }), { legacy: 'reject' });
+
+  const sendWorkspaceResponse = async (nodeResponse, webResponse) => {
+    const headers = Object.fromEntries(webResponse.headers.entries());
+    nodeResponse.writeHead(webResponse.status, headers);
+    if (webResponse.status === 204 || webResponse.status === 304) nodeResponse.end();
+    else nodeResponse.end(await webResponse.text());
+  };
+
+  const handleWorkspaceNodeRequest = async (nodeRequest, nodeResponse) => {
+    const requestUrl = new URL(nodeRequest.url, 'http://' + (nodeRequest.headers.host || 'localhost'));
+    const headers = new Headers();
+    for (const key of ['host', 'origin', 'authorization']) {
+      const value = nodeRequest.headers[key];
+      if (typeof value === 'string') headers.set(key, value);
+    }
+    const authRequest = new Request(requestUrl, { method: nodeRequest.method, headers });
+    const hostRejection = hostHeaderValidationResponse(authRequest, allowedHosts);
+    if (hostRejection) {
+      nodeRequest.resume();
+      await sendWorkspaceResponse(nodeResponse, hostRejection);
+      return;
+    }
+    const originRejection = originValidationResponse(authRequest, allowedOrigins);
+    if (originRejection) {
+      nodeRequest.resume();
+      await sendWorkspaceResponse(nodeResponse, originRejection);
+      return;
+    }
+    const limited = rateLimit(authRequest);
+    if (limited) {
+      metrics.recordRateLimit();
+      nodeRequest.resume();
+      await sendWorkspaceResponse(nodeResponse, limited);
+      return;
+    }
+    if (!oauth) {
+      nodeRequest.resume();
+      nodeResponse.writeHead(401, { 'Cache-Control': 'no-store' });
+      nodeResponse.end('Authentication is required.');
+      return;
+    }
+
+    let authInfo;
+    try {
+      authInfo = await oauth.authenticate(authRequest);
+    } catch {
+      nodeRequest.resume();
+      nodeResponse.writeHead(503, { 'Cache-Control': 'no-store', 'Retry-After': '5' });
+      nodeResponse.end('Authentication service temporarily unavailable.');
+      return;
+    }
+    if (authInfo instanceof Response) {
+      nodeRequest.resume();
+      await sendWorkspaceResponse(nodeResponse, authInfo);
+      return;
+    }
+    if (!authInfo.userId) {
+      nodeRequest.resume();
+      nodeResponse.writeHead(401, { 'Cache-Control': 'no-store' });
+      nodeResponse.end('Authenticated subject is required.');
+      return;
+    }
+
+    const workspaceItem = /^\/workspaces\/([0-9a-f-]{36})$/i.exec(requestUrl.pathname);
+    if (requestUrl.pathname === '/workspaces' && nodeRequest.method === 'POST') {
+      const contentType = String(nodeRequest.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+      if (contentType !== 'application/zip' && contentType !== 'application/octet-stream') {
+        nodeRequest.resume();
+        nodeResponse.writeHead(415, { 'Cache-Control': 'no-store' });
+        nodeResponse.end('Content-Type must be application/zip.');
+        return;
+      }
+      const declaredLength = nodeRequest.headers['content-length'];
+      if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 20_000_000)) {
+        nodeRequest.resume();
+        nodeResponse.writeHead(413, { 'Cache-Control': 'no-store' });
+        nodeResponse.end('Payload Too Large');
+        return;
+      }
+      const bodyResult = await new Promise((resolve, reject) => {
+        const chunks = [];
+        let received = 0;
+        let tooLarge = false;
+        nodeRequest.on('data', chunk => {
+          if (tooLarge) return;
+          received += chunk.length;
+          if (received > 20_000_000) {
+            tooLarge = true;
+            chunks.length = 0;
+            nodeRequest.pause();
+            resolve({ tooLarge: true });
+            return;
+          }
+          chunks.push(Buffer.from(chunk));
+        });
+        nodeRequest.once('end', () => {
+          if (!tooLarge) resolve({ body: Buffer.concat(chunks, received) });
+        });
+        nodeRequest.once('aborted', () => reject(new Error('Workspace upload request was aborted.')));
+        nodeRequest.once('error', reject);
+      });
+      if (bodyResult.tooLarge) {
+        nodeResponse.writeHead(413, { 'Cache-Control': 'no-store' });
+        nodeResponse.end('Payload Too Large');
+        nodeRequest.resume();
+        return;
+      }
+      try {
+        const workspace = await workspaceManager.createFromZip(authInfo.userId, bodyResult.body);
+        nodeResponse.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        nodeResponse.end(JSON.stringify(workspace));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid project archive.';
+        nodeResponse.writeHead(400, { 'Cache-Control': 'no-store' });
+        nodeResponse.end(message);
+      }
+      return;
+    }
+
+    if (workspaceItem && nodeRequest.method === 'DELETE') {
+      nodeRequest.resume();
+      const deleted = await workspaceManager.delete(authInfo.userId, workspaceItem[1]);
+      nodeResponse.writeHead(deleted ? 204 : 404, { 'Cache-Control': 'no-store' });
+      nodeResponse.end(deleted ? '' : 'Workspace not found.');
+      return;
+    }
+
+    nodeRequest.resume();
+    nodeResponse.writeHead(405, {
+      Allow: requestUrl.pathname === '/workspaces' ? 'POST' : 'DELETE',
+      'Cache-Control': 'no-store'
+    });
+    nodeResponse.end('Method Not Allowed');
+  };
+  const mcp = createMcpHandler(() => createServer({ metrics, env, workspaceManager }), { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
@@ -114,7 +247,6 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
       const hostRejection = hostHeaderValidationResponse(request, allowedHosts);
       if (hostRejection) return hostRejection;
-
       const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
 
@@ -213,6 +345,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       const requestId = randomUUID();
       const startedAt = Date.now();
       const requestPath = new URL(request.url, 'http://localhost').pathname;
+      const isWorkspaceRequest = requestPath === '/workspaces' || /^\/workspaces\/[0-9a-f-]{36}$/i.test(requestPath);
       const route = requestPath === MCP_PATH
         ? 'mcp'
         : requestPath === '/healthz'
@@ -221,7 +354,9 @@ export function createHttpServer(env = process.env, authOptions = {}) {
             ? 'readiness'
             : requestPath === '/.well-known/oauth-protected-resource'
               ? 'oauth_metadata'
-              : 'other';
+              : isWorkspaceRequest
+                ? 'workspace'
+                : 'other';
       response.setHeader('X-Request-Id', requestId);
       let logged = false;
       const writeRequestLog = event => {
@@ -277,6 +412,13 @@ export function createHttpServer(env = process.env, authOptions = {}) {
         response.once('finish', release);
         response.once('close', release);
       }
+      if (isWorkspaceRequest) {
+        handleWorkspaceNodeRequest(request, response).catch(() => {
+          if (!response.headersSent) response.writeHead(500, { 'Cache-Control': 'no-store' });
+          response.end('Workspace request failed.');
+        });
+        return;
+      }
       nodeHandler(request, response);
     }
   );
@@ -288,6 +430,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     async close() {
       if (!server.listening) {
         await mcp.close();
+        await workspaceManager.close();
         return;
       }
       let shutdownTimer;
@@ -302,6 +445,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       } finally {
         clearTimeout(shutdownTimer);
         await mcp.close();
+        await workspaceManager.close();
       }
     }
   };

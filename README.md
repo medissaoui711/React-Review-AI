@@ -7,9 +7,9 @@ Read-only React code review MCP server with local STDIO and Streamable HTTP tran
 - Node.js 22+
 - npm
 
-## Configure the trusted project root
+## Configure the trusted local project root
 
-Set `REACT_REVIEW_ROOT` to the absolute path of the one React project the server is authorized to inspect **before starting the MCP server**.
+For local STDIO integrations, set `REACT_REVIEW_ROOT` to the absolute path of the one React project the local server is authorized to inspect **before starting the MCP server**. Authenticated HTTP deployments use uploaded, temporary per-user workspaces instead.
 
 Linux/macOS:
 
@@ -24,7 +24,7 @@ $env:REACT_REVIEW_ROOT = "C:\absolute\path\to\react-project"
 npm start
 ```
 
-STDIO validates this directory during server startup and fails closed if it is missing, relative, inaccessible, or not a directory. The HTTP process can start so its liveness endpoint remains observable, but it reports not-ready until the configured directory is valid. All four tools share this fixed root; callers cannot supply or override it.
+STDIO validates this directory during server startup and fails closed if it is missing, relative, inaccessible, or not a directory. In local HTTP mode without OAuth, the same trusted root is used. In OAuth-enabled HTTP mode, users upload a ZIP archive to create an isolated temporary workspace; the verified token subject owns that workspace, and callers cannot supply a filesystem path or override the project root.
 
 ## MCP transports
 
@@ -47,7 +47,7 @@ The endpoint validates `Host` and any supplied `Origin`, accepts POST requests o
 ### Health, readiness, and graceful shutdown
 
 - `GET /healthz` returns a minimal liveness response (`200`) without exposing configuration or project details.
-- `GET /readyz` revalidates the configured project root and returns `200` only while it is accessible; otherwise it returns `503`. Both endpoints enforce the same Host/Origin checks and use `Cache-Control: no-store`.
+- `GET /readyz` verifies the configured local project root in non-OAuth mode, or the temporary workspace manager in OAuth mode, and returns `200` only when the relevant service is ready. Both endpoints enforce the same Host/Origin checks and use `Cache-Control: no-store`.
 - Health endpoints accept GET only. They do not expose metrics, environment variables, file paths, or OAuth state.
 - On SIGINT/SIGTERM, the HTTP server stops accepting new connections, closes idle connections, waits for active requests, and force-closes remaining HTTP connections after `MCP_SHUTDOWN_TIMEOUT_MS` (default `10000` ms). The timeout must be a positive integer.
 - Liveness is not readiness: route traffic only when `/readyz` reports `ready`.
@@ -72,7 +72,6 @@ OAUTH_ISSUER_URL=https://identity.example.com/
 OAUTH_JWKS_URL=https://identity.example.com/.well-known/jwks.json
 MCP_PUBLIC_URL=https://mcp.example.com/mcp
 OAUTH_REQUIRED_SCOPE=review:read
-REACT_REVIEW_ROOT=/absolute/path/to/react-project
 npm run start:http
 ```
 
@@ -101,17 +100,35 @@ Keep the MCP process bound to loopback and expose it only through a reverse prox
 
 - `Host` and `Origin` allowlists remain enforced; add trusted browser origins explicitly through `MCP_ALLOWED_ORIGIN_HOSTS`. Remote-bind mode starts without localhost aliases and allows only the configured resource host plus explicitly configured origins.
 - Bearer tokens and authorization headers are never written to application logs.
-- Request bodies are limited to 1 MiB by default.
+- MCP request bodies are limited to 1 MiB by default. Authenticated workspace ZIP uploads have a separate 20 MB hard limit.
 - Requests are rate-limited to 300 per socket peer per minute and 120 per token fingerprint per minute by default; set `MCP_RATE_LIMIT_PER_IP_PER_MINUTE` and `MCP_RATE_LIMIT_PER_MINUTE` respectively to change these positive integers. Behind a reverse proxy, the socket peer is the proxy, so enforce complementary per-client limits at the proxy.
 - HTTP headers, header wait time and request timeout have explicit limits.
 - `MCP_SHUTDOWN_TIMEOUT_MS` controls the bounded graceful-shutdown window (default 10 seconds).
 - `MCP_MAX_CONCURRENT_REQUESTS` caps active non-health HTTP requests (default 4); excess requests receive `503` with `Retry-After: 1`. Liveness/readiness probes bypass this concurrency gate.
-- STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable.
+- STDIO remains local and does not use HTTP OAuth; it continues to use the trusted `REACT_REVIEW_ROOT` environment variable. OAuth-enabled HTTP analysis is bound to a temporary workspace owned by the verified JWT subject.
 - Use short-lived access tokens and the identity provider's revocation controls. Local JWT verification does not provide immediate per-token revocation before token expiry.
 
 ## Provider-neutral OAuth compatibility
 
 See [Phase 3.6 provider compatibility](docs/phase-3.6-oauth-provider-compatibility.md) for the external identity-provider contract, PKCE/resource requirements, refresh-token expectations, and the boundary between simulated tests and live ChatGPT validation.
+
+## Authenticated project workspaces
+
+OAuth-enabled HTTP deployments do not use a shared REACT_REVIEW_ROOT. Upload a ZIP archive to the same host as the MCP endpoint:
+
+```bash
+curl --fail-with-body \
+  -X POST https://mcp.example.com/workspaces \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/zip" \
+  --data-binary @project.zip
+```
+
+The response contains workspace_id and expires_at. Include workspace_id in the arguments to review_project, review_component, run_test_audit, and audit_accessibility. review_component also requires a workspace-relative file_path. Delete a workspace with DELETE /workspaces/{workspace_id}; only its authenticated owner can delete it.
+
+ZIP intake is bounded to 20 MB compressed, 2,500 entries, 500 KB per file, and 20 MB expanded content. The service rejects traversal paths, absolute paths, duplicate paths, symlinks, special entries, encrypted archives, ZIP64, and multi-volume archives. Workspaces expire after 30 minutes and are limited to three active workspaces per user and 25 active workspaces per Node process.
+
+Workspace metadata is process-local and files live on the Node host's temporary filesystem. The current implementation is single-process only; a multi-instance deployment needs shared workspace storage/metadata or enforced single-instance routing. Process restarts invalidate workspace IDs. No uploaded source, package script, or test is executed.
 
 ## MCP tools
 

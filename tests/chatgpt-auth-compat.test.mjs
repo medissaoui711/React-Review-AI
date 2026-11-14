@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { deflateRawSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createHttpServer } from '../server/http.mjs';
+import { WorkspaceManager } from '../server/workspaces.mjs';
 
 const issuer = 'https://identity.example.test/';
 const resource = 'https://mcp.example.test/mcp';
@@ -34,19 +36,71 @@ async function createTestIdentity() {
   return { jwks, token, insufficientToken };
 }
 
+function zipCrc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function makeProjectZip(name, source) {
+  const filename = Buffer.from(name, 'utf8');
+  const content = Buffer.from(source, 'utf8');
+  const compressed = deflateRawSync(content);
+  const crc = zipCrc32(content);
+  const flags = 0x0800;
+  const method = 8;
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(flags, 6);
+  local.writeUInt16LE(method, 8);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(compressed.length, 18);
+  local.writeUInt32LE(content.length, 22);
+  local.writeUInt16LE(filename.length, 26);
+  local.writeUInt16LE(0, 28);
+
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE((3 << 8) | 20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(flags, 8);
+  central.writeUInt16LE(method, 10);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(compressed.length, 20);
+  central.writeUInt32LE(content.length, 24);
+  central.writeUInt16LE(filename.length, 28);
+  central.writeUInt16LE(0, 30);
+  central.writeUInt16LE(0, 32);
+  central.writeUInt16LE(0, 34);
+  central.writeUInt32LE(0o100644 * 0x10000, 38);
+  central.writeUInt32LE(0, 42);
+
+  const centralOffset = local.length + filename.length + compressed.length;
+  const centralSize = central.length + filename.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([local, filename, compressed, central, filename, end]);
+}
+
 async function withOAuthServer(run) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-phase-3-6-'));
-  const root = path.join(parent, 'project');
-  await mkdir(root, { recursive: true });
-  await writeFile(path.join(root, 'Sample.jsx'), 'export function Sample() { return <img src="/x.png" />; }');
   const previous = {
-    REACT_REVIEW_ROOT: process.env.REACT_REVIEW_ROOT,
     OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
     OAUTH_JWKS_URL: process.env.OAUTH_JWKS_URL,
     MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
     OAUTH_REQUIRED_SCOPE: process.env.OAUTH_REQUIRED_SCOPE
   };
-  process.env.REACT_REVIEW_ROOT = root;
   process.env.OAUTH_ISSUER_URL = issuer;
   process.env.OAUTH_JWKS_URL = 'https://identity.example.test/.well-known/jwks.json';
   process.env.MCP_PUBLIC_URL = resource;
@@ -54,7 +108,6 @@ async function withOAuthServer(run) {
   const identity = await createTestIdentity();
   const runtime = createHttpServer({
     NODE_ENV: 'test',
-    REACT_REVIEW_ROOT: root,
     OAUTH_ISSUER_URL: issuer,
     OAUTH_JWKS_URL: 'https://identity.example.test/.well-known/jwks.json',
     MCP_PUBLIC_URL: resource,
@@ -67,7 +120,7 @@ async function withOAuthServer(run) {
       runtime.server.listen(0, '127.0.0.1', resolve);
     });
     const address = runtime.server.address();
-    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, ...identity });
+    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, workspaceArchive: makeProjectZip('Sample.jsx', 'export function Sample() { return <img src="/x.png" />; }'), ...identity });
   } finally {
     runtime.server.closeAllConnections();
     await runtime.close();
@@ -126,18 +179,43 @@ test('ChatGPT-compatible tool metadata and OAuth challenges support discovery be
   });
 });
 
-test('valid provider-neutral OAuth access token authorizes all four read-only tools', { timeout: 60000 }, async () => {
-  await withOAuthServer(async ({ endpoint, token }) => {
-    const client = await connectClient(endpoint, token);
+test('valid provider-neutral OAuth access token authorizes all four read-only tools in an owned workspace', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, token, workspaceArchive }) => {
+    const fixtureManager = new WorkspaceManager();
     try {
+      await fixtureManager.createFromZip('fixture-user', workspaceArchive);
+    } finally {
+      await fixtureManager.close();
+    }
+    const client = await connectClient(endpoint, token);
+    const base = endpoint.slice(0, -'/mcp'.length);
+    let workspaceId;
+    try {
+      const upload = await fetch(base + '/workspaces', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + token, 'content-type': 'application/zip' },
+        body: workspaceArchive
+      });
+      const uploadBody = await upload.text();
+      assert.equal(upload.status, 201, uploadBody);
+      const workspace = JSON.parse(uploadBody);
+      workspaceId = workspace.workspace_id;
+      assert.ok(workspaceId);
+
       const listed = await client.listTools();
       assert.equal(listed.tools.length, 4);
       for (const [name, args] of toolCalls) {
-        const result = await client.callTool({ name, arguments: args });
-        assert.notEqual(result.isError, true, `${name} must accept the verified token`);
+        const result = await client.callTool({ name, arguments: { ...args, workspace_id: workspaceId } });
+        assert.notEqual(result.isError, true, name + ' must accept the verified workspace owner');
         assert.ok(result.structuredContent || result.content?.length);
       }
     } finally {
+      if (workspaceId) {
+        await fetch(base + '/workspaces/' + workspaceId, {
+          method: 'DELETE',
+          headers: { authorization: 'Bearer ' + token }
+        });
+      }
       await client.close();
     }
   });

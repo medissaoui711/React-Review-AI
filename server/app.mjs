@@ -111,22 +111,37 @@ function registerReadOnlyTool(server, name, config, handler, oauth) {
           return authRequiredResult(oauth.runtime, authInfo);
         }
       }
-      return asToolResult(await handler(args));
+      return asToolResult(await handler(args, context));
     } catch (error) {
       return asToolError(error);
     }
   });
 }
 
-export async function createServer({ metrics, env = process.env } = {}) {
-  const review = await createReviewService(env.REACT_REVIEW_ROOT, { metrics });
+export async function createServer({ metrics, env = process.env, workspaceManager } = {}) {
+  const manager = workspaceManager ?? null;
   const oauth = oauthToolConfig(env);
+  const localReview = (!manager || !oauth.enabled) && env.REACT_REVIEW_ROOT
+    ? await createReviewService(env.REACT_REVIEW_ROOT, { metrics })
+    : null;
+  const resolveReview = async (args, context) => {
+    const authInfo = context?.http?.authInfo;
+    if (authInfo?.userId) {
+      if (!manager) throw new Error('Workspace service is unavailable.');
+      const workspaceRoot = await manager.resolve(authInfo.userId, args.workspace_id);
+      return createReviewService(workspaceRoot, { metrics });
+    }
+    if (context?.http && oauth.enabled) throw new Error('An authenticated workspace is required.');
+    if (args.workspace_id) throw new Error('Workspace access requires an authenticated user.');
+    if (!localReview) throw new Error('Upload a project workspace before invoking review tools.');
+    return localReview;
+  };
   const server = new McpServer({
     ...SERVER_INFO,
     instructions: [
       'React Review AI is a read-only static review server.',
-      'All tools are restricted to the single trusted project directory configured by REACT_REVIEW_ROOT at startup.',
-      'Tool callers cannot provide or override the project root.',
+      'HTTP users must supply a workspace ID owned by their verified OAuth subject; workspace IDs cannot be shared across users.',
+      'Local STDIO may use the trusted REACT_REVIEW_ROOT; callers cannot provide or override a project root.',
       'Findings are AST-based rule signals and require human validation.',
       'Tests are inventoried but never executed; coverage is never inferred.',
       'Accessibility checks are not a WCAG conformance assessment.',
@@ -138,28 +153,29 @@ export async function createServer({ metrics, env = process.env } = {}) {
   registerReadOnlyTool(server, 'review_project', {
     title: 'Review React Project',
     description: 'Read-only AST-based static React project review, bounded by configured file, byte, finding, and time budgets.',
-    inputSchema: z.object({}).strict()
-  }, () => review.reviewProject(), oauth);
+    inputSchema: z.object({ workspace_id: z.string().uuid().optional().describe('Required for authenticated HTTP; omit only for local STDIO.') }).strict()
+  }, async (args, context) => (await resolveReview(args, context)).reviewProject(), oauth);
 
   registerReadOnlyTool(server, 'review_component', {
     title: 'Review React Component',
     description: 'Read-only AST review of one source file in an isolated worker with an enforceable analysis timeout. Absolute paths and project-root overrides are rejected.',
     inputSchema: z.object({
-      file_path: z.string().min(1).describe('Path to one source file, relative to the trusted project root.')
+      file_path: z.string().min(1).describe('Path to one source file, relative to the authorized workspace.'),
+      workspace_id: z.string().uuid().optional().describe('Workspace ID returned by the authenticated workspace upload endpoint.')
     }).strict()
-  }, ({ file_path }) => review.reviewFile(file_path), oauth);
+  }, async (args, context) => (await resolveReview(args, context)).reviewFile(args.file_path), oauth);
 
   registerReadOnlyTool(server, 'run_test_audit', {
     title: 'Audit React Test Setup',
-    description: 'Inventory test files and configuration within the trusted project root; does not run tests or calculate coverage.',
-    inputSchema: z.object({}).strict()
-  }, () => review.testAudit(), oauth);
+    description: 'Inventory test files and configuration within the authorized project workspace; does not run tests or calculate coverage.',
+    inputSchema: z.object({ workspace_id: z.string().uuid().optional().describe('Workspace ID returned by the authenticated workspace upload endpoint.') }).strict()
+  }, async (args, context) => (await resolveReview(args, context)).testAudit(), oauth);
 
   registerReadOnlyTool(server, 'audit_accessibility', {
     title: 'Audit React Accessibility',
-    description: 'AST-based static JSX accessibility heuristics within the trusted project root; not a WCAG conformance or browser/screen-reader assessment.',
-    inputSchema: z.object({}).strict()
-  }, () => review.accessibilityAudit(), oauth);
+    description: 'AST-based static JSX accessibility heuristics within the authorized project workspace; not a WCAG conformance or browser/screen-reader assessment.',
+    inputSchema: z.object({ workspace_id: z.string().uuid().optional().describe('Workspace ID returned by the authenticated workspace upload endpoint.') }).strict()
+  }, async (args, context) => (await resolveReview(args, context)).accessibilityAudit(), oauth);
 
   return server;
 }

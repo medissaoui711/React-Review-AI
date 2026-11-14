@@ -107,6 +107,7 @@ test('JWT verifier accepts only valid issuer, audience, algorithm, expiry and su
   const info = await verifier.verifyAccessToken(token);
 
   assert.equal(info.clientId, 'test-user');
+  assert.equal(info.userId, 'test-user');
   assert.deepEqual(info.scopes, ['review:read']);
   assert.equal(info.resource.href, resource);
   assert.ok(info.expiresAt > Math.floor(Date.now() / 1000));
@@ -411,6 +412,61 @@ test('HTTP endpoint exposes resource metadata and permits unauthenticated MCP di
     });
     const address = runtime.server.address();
     const base = `http://127.0.0.1:${address.port}`;
+
+    const unauthenticatedUpload = await fetch(`${base}/workspaces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/zip' },
+      body: Buffer.from('not-a-zip')
+    });
+    assert.equal(unauthenticatedUpload.status, 401);
+
+    const validWorkspaceToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
+    const invalidArchiveUpload = await fetch(`${base}/workspaces`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${validWorkspaceToken}`,
+        'content-type': 'application/zip'
+      },
+      body: Buffer.from('not-a-zip')
+    });
+    assert.equal(invalidArchiveUpload.status, 400);
+
+    const emptyZip = Buffer.alloc(22);
+    emptyZip.writeUInt32LE(0x06054b50, 0);
+    const createdWorkspaceResponse = await fetch(`${base}/workspaces`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${validWorkspaceToken}`,
+        'content-type': 'application/zip'
+      },
+      body: emptyZip
+    });
+    assert.equal(createdWorkspaceResponse.status, 201);
+    const createdWorkspace = await createdWorkspaceResponse.json();
+    assert.ok(createdWorkspace.workspace_id);
+    assert.ok(createdWorkspace.expires_at);
+
+    const otherUserToken = await tokenFor(privateKey, {
+      audience: 'http://127.0.0.1:3000/mcp',
+      subject: 'different-user'
+    });
+    const otherUserDelete = await fetch(`${base}/workspaces/${createdWorkspace.workspace_id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${otherUserToken}` }
+    });
+    assert.equal(otherUserDelete.status, 404);
+
+    const ownerDelete = await fetch(`${base}/workspaces/${createdWorkspace.workspace_id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${validWorkspaceToken}` }
+    });
+    assert.equal(ownerDelete.status, 204);
+
+    const nonOwnerDelete = await fetch(`${base}/workspaces/00000000-0000-4000-8000-000000000000`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${validWorkspaceToken}` }
+    });
+    assert.equal(nonOwnerDelete.status, 404);
 
     const metadata = await fetch(`${base}/.well-known/oauth-protected-resource`);
     assert.equal(metadata.status, 200);
