@@ -71,10 +71,10 @@ jobs:
             'run_test_audit',
           ];
           const expectedProperties = {
-            audit_accessibility: [],
-            review_component: ['file_path'],
-            review_project: [],
-            run_test_audit: [],
+            audit_accessibility: ['workspace_id'],
+            review_component: ['file_path', 'workspace_id'],
+            review_project: ['workspace_id'],
+            run_test_audit: ['workspace_id'],
           };
 
           const transport = new StdioClientTransport({
@@ -198,7 +198,7 @@ jobs:
               assert.ok(tool.outputSchema && typeof tool.outputSchema === 'object',
                 `HTTP tool ${tool.name} must publish a dedicated output schema`);
               const properties = Object.keys(tool.inputSchema.properties || {}).sort();
-              assert.deepEqual(properties, tool.name === 'review_component' ? ['file_path'] : []);
+              assert.deepEqual(properties, tool.name === 'review_component' ? ['file_path', 'workspace_id'] : ['workspace_id']);
             }
             for (const [name, args] of [
               ['review_project', {}],
