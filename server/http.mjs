@@ -19,6 +19,33 @@ import {
   enforceRequestBodyLimit
 } from './auth.mjs';
 
+async function readBoundedArchiveBody(request, maxBytes) {
+  const declaredLength = request.headers.get('content-length');
+  if (declaredLength && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
+    return new Response('Payload Too Large', { status: 413 });
+  }
+  if (!request.body) return Buffer.alloc(0);
+  const reader = request.body.getReader();
+  const chunks = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        await reader.cancel();
+        return new Response('Payload Too Large', { status: 413 });
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, received);
+  } catch {
+    try { await reader.cancel(); } catch { /* Stream may already be closed. */ }
+    return new Response('Bad Request', { status: 400 });
+  }
+}
+
 const MCP_PATH = '/mcp';
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -141,10 +168,9 @@ export function createHttpServer(env = process.env, authOptions = {}) {
           if (contentType !== 'application/zip' && contentType !== 'application/octet-stream') {
             return new Response('Content-Type must be application/zip.', { status: 415 });
           }
-          const bounded = await enforceRequestBodyLimit(request, 20_000_000);
-          if (bounded instanceof Response) return bounded;
+          const archive = await readBoundedArchiveBody(request, 20_000_000);
+          if (archive instanceof Response) return archive;
           try {
-            const archive = Buffer.from(await bounded.arrayBuffer());
             const workspace = await workspaceManager.createFromZip(authInfo.userId, archive);
             return Response.json(workspace, { status: 201, headers: { 'Cache-Control': 'no-store' } });
           } catch (error) {
