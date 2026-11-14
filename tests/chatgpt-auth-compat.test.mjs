@@ -182,7 +182,7 @@ test('ChatGPT-compatible tool metadata and OAuth challenges support discovery be
 test('valid provider-neutral OAuth access token authorizes all four read-only tools in an owned workspace', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint, token, workspaceArchive }) => {
     const client = await connectClient(endpoint, token);
-    const base = endpoint.replace(/\\/mcp$/, '');
+    const base = endpoint.slice(0, -'/mcp'.length);
     let workspaceId;
     try {
       const upload = await fetch(base + '/workspaces', {
@@ -190,8 +190,9 @@ test('valid provider-neutral OAuth access token authorizes all four read-only to
         headers: { authorization: 'Bearer ' + token, 'content-type': 'application/zip' },
         body: workspaceArchive
       });
-      assert.equal(upload.status, 201, await upload.text());
-      const workspace = await upload.json();
+      const uploadBody = await upload.text();
+      assert.equal(upload.status, 201, uploadBody);
+      const workspace = JSON.parse(uploadBody);
       workspaceId = workspace.workspace_id;
       assert.ok(workspaceId);
 
