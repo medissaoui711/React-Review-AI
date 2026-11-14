@@ -34,6 +34,59 @@ async function createTestIdentity() {
   return { jwks, token, insufficientToken };
 }
 
+function zipCrc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function makeProjectZip(name, source) {
+  const filename = Buffer.from(name, 'utf8');
+  const content = Buffer.from(source, 'utf8');
+  const crc = zipCrc32(content);
+  const flags = 0x0800;
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(flags, 6);
+  local.writeUInt16LE(0, 8);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(content.length, 18);
+  local.writeUInt32LE(content.length, 22);
+  local.writeUInt16LE(filename.length, 26);
+  local.writeUInt16LE(0, 28);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE((3 << 8) | 20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(flags, 8);
+  central.writeUInt16LE(0, 10);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(content.length, 20);
+  central.writeUInt32LE(content.length, 24);
+  central.writeUInt16LE(filename.length, 28);
+  central.writeUInt16LE(0, 30);
+  central.writeUInt16LE(0, 32);
+  central.writeUInt16LE(0, 34);
+  central.writeUInt32LE(0o100644 * 0x10000, 38);
+  central.writeUInt32LE(0, 42);
+  const centralOffset = local.length + filename.length + content.length;
+  const centralSize = central.length + filename.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([local, filename, content, central, filename, end]);
+}
+
 async function withOAuthServer(run) {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'react-review-ai-phase-3-6-'));
   const root = path.join(parent, 'project');
@@ -67,7 +120,7 @@ async function withOAuthServer(run) {
       runtime.server.listen(0, '127.0.0.1', resolve);
     });
     const address = runtime.server.address();
-    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, ...identity });
+    await run({ endpoint: `http://127.0.0.1:${address.port}/mcp`, workspaceArchive: makeProjectZip('Sample.jsx', 'export function Sample() { return <img src="/x.png" />; }'), ...identity });
   } finally {
     runtime.server.closeAllConnections();
     await runtime.close();
@@ -126,18 +179,36 @@ test('ChatGPT-compatible tool metadata and OAuth challenges support discovery be
   });
 });
 
-test('valid provider-neutral OAuth access token authorizes all four read-only tools', { timeout: 60000 }, async () => {
-  await withOAuthServer(async ({ endpoint, token }) => {
+test('valid provider-neutral OAuth access token authorizes all four read-only tools in an owned workspace', { timeout: 60000 }, async () => {
+  await withOAuthServer(async ({ endpoint, token, workspaceArchive }) => {
     const client = await connectClient(endpoint, token);
+    const base = endpoint.replace(/\\/mcp$/, '');
+    let workspaceId;
     try {
+      const upload = await fetch(base + '/workspaces', {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + token, 'content-type': 'application/zip' },
+        body: workspaceArchive
+      });
+      assert.equal(upload.status, 201, await upload.text());
+      const workspace = await upload.json();
+      workspaceId = workspace.workspace_id;
+      assert.ok(workspaceId);
+
       const listed = await client.listTools();
       assert.equal(listed.tools.length, 4);
       for (const [name, args] of toolCalls) {
-        const result = await client.callTool({ name, arguments: args });
-        assert.notEqual(result.isError, true, `${name} must accept the verified token`);
+        const result = await client.callTool({ name, arguments: { ...args, workspace_id: workspaceId } });
+        assert.notEqual(result.isError, true, name + ' must accept the verified workspace owner');
         assert.ok(result.structuredContent || result.content?.length);
       }
     } finally {
+      if (workspaceId) {
+        await fetch(base + '/workspaces/' + workspaceId, {
+          method: 'DELETE',
+          headers: { authorization: 'Bearer ' + token }
+        });
+      }
       await client.close();
     }
   });
