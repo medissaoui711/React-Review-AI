@@ -126,7 +126,7 @@ curl --fail-with-body \
 
 The response contains workspace_id and expires_at. Include workspace_id in the arguments to review_project, review_component, run_test_audit, and audit_accessibility. review_component also requires a workspace-relative file_path. Delete a workspace with DELETE /workspaces/{workspace_id}; only its authenticated owner can delete it.
 
-ZIP intake is bounded to 20 MB compressed, 2,500 entries, 500 KB per file, and 20 MB expanded content. The service rejects traversal paths, absolute paths, duplicate paths, symlinks, special entries, encrypted archives, ZIP64, and multi-volume archives. Workspaces expire after 30 minutes and are limited to three active workspaces per user.
+ZIP intake is bounded to 20 MB compressed, 2,500 entries, 500 KB per file, and 20 MB expanded content. The service rejects traversal paths, absolute paths, duplicate paths, symlinks, special entries, encrypted archives, ZIP64, and multi-volume archives. Workspaces expire after 30 minutes and are limited to three active workspaces per user and 25 active workspaces per Node process.
 
 Workspace metadata is process-local and files live on the Node host's temporary filesystem. The current implementation is single-process only; a multi-instance deployment needs shared workspace storage/metadata or enforced single-instance routing. Process restarts invalidate workspace IDs. No uploaded source, package script, or test is executed.
 
