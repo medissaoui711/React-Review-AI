@@ -107,6 +107,7 @@ test('workspace rejects symlinks, duplicate names, and invalid CRC values', asyn
 
 test('workspace enforces archive, file, and expanded-size limits', async () => {
   await withManager(async manager => {
+    await assert.rejects(manager.createFromZip('user-a', Buffer.alloc(1_000_001)), /size is outside the permitted limit/);
     await assert.rejects(manager.createFromZip('user-a', Buffer.alloc(21)), /valid ZIP|size is outside/);
     await assert.rejects(manager.createFromZip('user-a', makeZip([{ name: 'large.txt', content: 'x'.repeat(500_001) }])), /exceeds the permitted size/);
   }, { limits: { maxArchiveBytes: 1_000_000, maxFileBytes: 16 } });
@@ -135,6 +136,14 @@ test('concurrent uploads cannot exceed the per-user workspace quota', async () =
     assert.equal(results.filter(result => result.status === 'rejected').length, 1);
     assert.match(results.find(result => result.status === 'rejected').reason.message, /quota has been reached/);
   }, { limits: { maxWorkspacesPerUser: 1 } });
+});
+
+test('global process workspace capacity is enforced across different users', async () => {
+  await withManager(async manager => {
+    const archive = makeZip([{ name: 'README.md', content: 'demo' }]);
+    await manager.createFromZip('user-a', archive);
+    await assert.rejects(manager.createFromZip('user-b', archive), /server workspace capacity has been reached/);
+  }, { limits: { maxWorkspacesTotal: 1 } });
 });
 
 test('workspace manager refuses missing authenticated identities', async () => {
