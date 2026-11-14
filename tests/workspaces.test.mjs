@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { deflateRawSync } from 'node:zlib';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { WorkspaceManager } from '../server/workspaces.mjs';
 
