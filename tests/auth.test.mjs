@@ -412,6 +412,30 @@ test('HTTP endpoint exposes resource metadata and permits unauthenticated MCP di
     const address = runtime.server.address();
     const base = `http://127.0.0.1:${address.port}`;
 
+    const unauthenticatedUpload = await fetch(`${base}/workspaces`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/zip' },
+      body: Buffer.from('not-a-zip')
+    });
+    assert.equal(unauthenticatedUpload.status, 401);
+
+    const validWorkspaceToken = await tokenFor(privateKey, { audience: 'http://127.0.0.1:3000/mcp' });
+    const invalidArchiveUpload = await fetch(`${base}/workspaces`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${validWorkspaceToken}`,
+        'content-type': 'application/zip'
+      },
+      body: Buffer.from('not-a-zip')
+    });
+    assert.equal(invalidArchiveUpload.status, 400);
+
+    const nonOwnerDelete = await fetch(`${base}/workspaces/00000000-0000-4000-8000-000000000000`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${validWorkspaceToken}` }
+    });
+    assert.equal(nonOwnerDelete.status, 404);
+
     const metadata = await fetch(`${base}/.well-known/oauth-protected-resource`);
     assert.equal(metadata.status, 200);
     const metadataBody = await metadata.json();
