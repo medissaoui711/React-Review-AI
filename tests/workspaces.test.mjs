@@ -124,6 +124,19 @@ test('workspace quota and expiration cleanup are enforced', async () => {
   }, { limits: { maxWorkspacesPerUser: 1, ttlMs: 60_000 } });
 });
 
+test('concurrent uploads cannot exceed the per-user workspace quota', async () => {
+  await withManager(async manager => {
+    const archive = makeZip([{ name: 'README.md', content: 'demo' }]);
+    const results = await Promise.allSettled([
+      manager.createFromZip('user-a', archive),
+      manager.createFromZip('user-a', archive)
+    ]);
+    assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+    assert.equal(results.filter(result => result.status === 'rejected').length, 1);
+    assert.match(results.find(result => result.status === 'rejected').reason.message, /quota has been reached/);
+  }, { limits: { maxWorkspacesPerUser: 1 } });
+});
+
 test('workspace manager refuses missing authenticated identities', async () => {
   await withManager(async manager => {
     await assert.rejects(manager.createFromZip('', makeZip([{ name: 'a.txt', content: 'a' }])), /identity is required/);
