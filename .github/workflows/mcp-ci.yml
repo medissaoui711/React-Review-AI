@@ -2,7 +2,7 @@ name: React Review AI MCP CI
 
 on:
   push:
-    branches: [main, phase-d6-auth0-production-certification, phase-demo-cloudflare-d4-readiness, phase-demo-cloudflare-d5-deployment-readiness, phase-3.2-secure-file-access, phase-3.3-streamable-http, phase-3.4-advanced-review-engine, phase-3.5-authentication-privacy, phase-3.6-compatibility-chatgpt-validation, phase-3.7-production-hardening, phase-demo-cloudflare, phase-3.8-frontend-integration-readiness, phase-4.3-security-isolation]
+    branches: [main, phase-d6-auth0-production-certification, phase-demo-cloudflare-d4-readiness, phase-demo-cloudflare-d5-deployment-readiness, phase-3.2-secure-file-access, phase-3.3-streamable-http, phase-3.4-advanced-review-engine, phase-3.5-authentication-privacy, phase-3.6-compatibility-chatgpt-validation, phase-3.7-production-hardening, phase-demo-cloudflare, phase-3.8-frontend-integration-readiness]
   pull_request:
     branches: [main]
   workflow_dispatch:
