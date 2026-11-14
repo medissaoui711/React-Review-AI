@@ -17,11 +17,12 @@ function makeZip(files, { corruptCrc = false } = {}) {
   const localParts = [];
   const centralParts = [];
   let localOffset = 0;
-  for (const file of files) {
+  for (const [fileIndex, file] of files.entries()) {
     const name = Buffer.from(file.name, 'utf8');
     const content = Buffer.from(file.content ?? '', 'utf8');
     const compressed = deflateRawSync(content);
-    const crc = (crc32(content) + (corruptCrc ? 1 : 0)) >>> 0;
+    const corruptThisCrc = corruptCrc === true || corruptCrc === fileIndex;
+    const crc = (crc32(content) + (corruptThisCrc ? 1 : 0)) >>> 0;
     const flags = 0x0800;
     const method = 8;
     const local = Buffer.alloc(30);
@@ -261,7 +262,7 @@ test('failed extraction removes partial workspace files and private permissions 
     const archive = makeZip([
       { name: 'src/First.jsx', content: 'first' },
       { name: 'src/Second.jsx', content: 'second' }
-    ], { corruptCrc: true });
+    ], { corruptCrc: 1 });
     await assert.rejects(manager.createFromZip('user-a', archive), /checksum validation failed/);
     const roots = await readdir(parent);
     assert.equal(roots.length, 1);
