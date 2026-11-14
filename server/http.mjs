@@ -12,6 +12,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createServer } from './app.mjs';
 import { createReviewService } from './review.mjs';
 import { createRuntimeMetrics } from './metrics.mjs';
+import { WorkspaceManager } from './workspaces.mjs';
 import {
   createOAuthRuntime,
   createRequestRateLimiter,
@@ -40,6 +41,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   const allowRemote = env.MCP_HTTP_ALLOW_REMOTE === 'true';
   const remoteBind = !isLoopback(bindHost);
   const oauth = createOAuthRuntime(env, authOptions);
+  const workspaceManager = new WorkspaceManager();
 
   if (remoteBind && !allowRemote) {
     throw new Error('Non-loopback HTTP binding requires MCP_HTTP_ALLOW_REMOTE=true.');
@@ -94,21 +96,20 @@ export function createHttpServer(env = process.env, authOptions = {}) {
   let activeRequests = 0;
   const metrics = createRuntimeMetrics();
   const isReady = async () => {
-    try {
-      await createReviewService(env.REACT_REVIEW_ROOT);
-      return true;
-    } catch {
-      return false;
-    }
+    if (await workspaceManager.ready()) return true;
+    try { await createReviewService(env.REACT_REVIEW_ROOT); return true; }
+    catch { return false; }
   };
-  const mcp = createMcpHandler(() => createServer({ metrics, env }), { legacy: 'reject' });
+  const mcp = createMcpHandler(() => createServer({ metrics, env, workspaceManager }), { legacy: 'reject' });
 
   const guardedHandler = {
     fetch: async (request) => {
       const url = new URL(request.url);
       const isMetadataRequest = oauth && url.pathname === '/.well-known/oauth-protected-resource';
       const isHealthRequest = url.pathname === '/healthz' || url.pathname === '/readyz';
-      if (url.pathname !== MCP_PATH && !isMetadataRequest && !isHealthRequest) {
+      const isWorkspaceCollection = url.pathname === '/workspaces';
+      const workspaceItem = /^\/workspaces\/([0-9a-f-]{36})$/i.exec(url.pathname);
+      if (url.pathname !== MCP_PATH && !isMetadataRequest && !isHealthRequest && !isWorkspaceCollection && !workspaceItem) {
         return new Response('Not Found', { status: 404 });
       }
 
@@ -117,6 +118,46 @@ export function createHttpServer(env = process.env, authOptions = {}) {
 
       const originRejection = originValidationResponse(request, allowedOrigins);
       if (originRejection) return originRejection;
+
+      if (isWorkspaceCollection || workspaceItem) {
+        if (!oauth) return new Response('Authentication is required.', { status: 401, headers: { 'Cache-Control': 'no-store' } });
+        let authInfo;
+        try {
+          authInfo = await oauth.authenticate(request);
+        } catch {
+          return new Response('Authentication service temporarily unavailable.', {
+            status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '5' }
+          });
+        }
+        if (authInfo instanceof Response) return authInfo;
+        if (!authInfo.userId) return new Response('Authenticated subject is required.', { status: 401 });
+        if (isWorkspaceCollection && request.method.toUpperCase() === 'POST') {
+          const contentType = (request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+          if (contentType !== 'application/zip' && contentType !== 'application/octet-stream') {
+            return new Response('Content-Type must be application/zip.', { status: 415 });
+          }
+          const bounded = await enforceRequestBodyLimit(request, 20_000_000);
+          if (bounded instanceof Response) return bounded;
+          try {
+            const archive = Buffer.from(await bounded.arrayBuffer());
+            const workspace = await workspaceManager.createFromZip(authInfo.userId, archive);
+            return Response.json(workspace, { status: 201, headers: { 'Cache-Control': 'no-store' } });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Invalid project archive.';
+            return new Response(message, { status: 400, headers: { 'Cache-Control': 'no-store' } });
+          }
+        }
+        if (workspaceItem && request.method.toUpperCase() === 'DELETE') {
+          const deleted = await workspaceManager.delete(authInfo.userId, workspaceItem[1]);
+          return deleted
+            ? new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } })
+            : new Response('Workspace not found.', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+        }
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: isWorkspaceCollection ? 'POST' : 'DELETE' }
+        });
+      }
 
       if (isHealthRequest) {
         if (request.method.toUpperCase() !== 'GET') {
@@ -288,6 +329,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
     async close() {
       if (!server.listening) {
         await mcp.close();
+        await workspaceManager.close();
         return;
       }
       let shutdownTimer;
@@ -302,6 +344,7 @@ export function createHttpServer(env = process.env, authOptions = {}) {
       } finally {
         clearTimeout(shutdownTimer);
         await mcp.close();
+        await workspaceManager.close();
       }
     }
   };
