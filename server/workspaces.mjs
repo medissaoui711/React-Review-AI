@@ -23,7 +23,7 @@ function crc32(buffer) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function safeArchivePath(rawName) {
+function safeArchivePath(rawName, maxDepth = 20) {
   if (!rawName || rawName.includes('\\') || rawName.includes('\0')) throw new Error('Archive contains an invalid path.');
   if (rawName.startsWith('/') || /^[a-zA-Z]:/.test(rawName)) throw new Error('Archive contains an absolute path.');
   const isDirectory = rawName.endsWith('/');
@@ -33,7 +33,7 @@ function safeArchivePath(rawName) {
     throw new Error('Archive contains a path traversal entry.');
   }
   if (segments.some(segment => segment.length > 255)) throw new Error('Archive contains an overlong path segment.');
-  if (segments.length > 20) throw new Error('Archive path exceeds the permitted directory depth.');
+  if (segments.length > maxDepth) throw new Error('Archive path exceeds the permitted directory depth.');
   return { relativePath: segments.join(path.sep), isDirectory };
 }
 
@@ -96,7 +96,7 @@ function readZipEntries(archive, limits) {
     if ((flags & 1) !== 0 || (flags & 0x40) !== 0) throw new Error('Encrypted ZIP entries are not supported.');
     if (method !== 0 && method !== 8) throw new Error('Archive uses an unsupported compression method.');
     const rawName = decoder.decode(archive.subarray(offset + 46, offset + 46 + nameLength));
-    const safe = safeArchivePath(rawName);
+    const safe = safeArchivePath(rawName, limits.maxDepth);
     const key = safe.relativePath.toLowerCase();
     if (names.has(key)) throw new Error('Archive contains duplicate paths.');
     names.add(key);
@@ -133,10 +133,21 @@ function extractEntry(archive, entry) {
   }
   const localFlags = archive.readUInt16LE(offset + 6);
   const localMethod = archive.readUInt16LE(offset + 8);
+  const localCrc = archive.readUInt32LE(offset + 14);
+  const localCompressedSize = archive.readUInt32LE(offset + 18);
+  const localUncompressedSize = archive.readUInt32LE(offset + 22);
   const nameLength = archive.readUInt16LE(offset + 26);
   const extraLength = archive.readUInt16LE(offset + 28);
   const localName = new TextDecoder('utf-8', { fatal: true }).decode(archive.subarray(offset + 30, offset + 30 + nameLength));
-  if (localName !== entry.rawName || localMethod !== entry.method || localFlags !== entry.flags) {
+  const hasDataDescriptor = (entry.flags & 0x0008) !== 0;
+  const localSizesMatch = hasDataDescriptor
+    ? [0, entry.expectedCrc].includes(localCrc)
+      && [0, entry.compressedSize].includes(localCompressedSize)
+      && [0, entry.uncompressedSize].includes(localUncompressedSize)
+    : localCrc === entry.expectedCrc
+      && localCompressedSize === entry.compressedSize
+      && localUncompressedSize === entry.uncompressedSize;
+  if (localName !== entry.rawName || localMethod !== entry.method || localFlags !== entry.flags || !localSizesMatch) {
     throw new Error('Archive local and central headers do not match.');
   }
   const dataStart = offset + 30 + nameLength + extraLength;
@@ -219,6 +230,7 @@ export class WorkspaceManager {
           max_entries: this.#limits.maxEntries,
           max_file_bytes: this.#limits.maxFileBytes,
           max_total_bytes: this.#limits.maxTotalBytes,
+          max_depth: this.#limits.maxDepth,
           ttl_ms: this.#limits.ttlMs
         }
       });
