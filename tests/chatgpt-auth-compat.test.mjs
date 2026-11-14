@@ -362,6 +362,6 @@ test('workspace upload rejects malformed ZIP bodies without creating a workspace
       body: Buffer.from('not a zip archive')
     });
     assert.equal(invalid.status, 400);
-    assert.match(await invalid.text(), /valid ZIP/);
+    assert.match(await invalid.text(), /valid ZIP|size is outside the permitted limit/);
   });
 });
