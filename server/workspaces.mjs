@@ -94,6 +94,7 @@ function readZipEntries(archive, limits) {
       throw new Error('ZIP64 or malformed archive entries are not supported.');
     }
     if ((flags & 1) !== 0 || (flags & 0x40) !== 0) throw new Error('Encrypted ZIP entries are not supported.');
+    if ((flags & ~0x080e) !== 0 || (method === 0 && (flags & 0x0006) !== 0)) throw new Error('Archive uses unsupported ZIP general-purpose flags.');
     if (method !== 0 && method !== 8) throw new Error('Archive uses an unsupported compression method.');
     const rawName = decoder.decode(archive.subarray(offset + 46, offset + 46 + nameLength));
     const safe = safeArchivePath(rawName, limits.maxDepth);
