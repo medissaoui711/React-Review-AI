@@ -107,6 +107,7 @@ test('JWT verifier accepts only valid issuer, audience, algorithm, expiry and su
   const info = await verifier.verifyAccessToken(token);
 
   assert.equal(info.clientId, 'test-user');
+  assert.equal(info.userId, 'test-user');
   assert.deepEqual(info.scopes, ['review:read']);
   assert.equal(info.resource.href, resource);
   assert.ok(info.expiresAt > Math.floor(Date.now() / 1000));
