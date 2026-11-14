@@ -185,6 +185,7 @@ test('workspace rejects unsupported, encrypted, multi-volume, and ZIP64 archives
       copy.writeUInt16LE(1, end + 4);
     })), /Multi-volume ZIP/);
     await assert.rejects(manager.createFromZip('user-a', patchCentral(archive, (copy, central, end) => {
+      copy.writeUInt16LE(0xffff, end + 8);
       copy.writeUInt16LE(0xffff, end + 10);
     })), /ZIP64/);
   });
@@ -197,7 +198,9 @@ test('workspace rejects local and central header mismatches and truncated entry 
       copy.writeUInt16LE(copy.readUInt16LE(6) ^ 0x0800, 6);
     })), /local and central headers do not match/);
     await assert.rejects(manager.createFromZip('user-a', patchCentral(archive, (copy, central) => {
-      copy.writeUInt32LE(copy.readUInt32LE(central + 20) + 500, central + 20);
+      const expandedCompressedSize = copy.readUInt32LE(central + 20) + 500;
+      copy.writeUInt32LE(expandedCompressedSize, central + 20);
+      copy.writeUInt32LE(expandedCompressedSize, 18);
     })), /truncated or overlaps its directory/);
     await assert.rejects(manager.createFromZip('user-a', patchCentral(archive, copy => {
       copy.writeUInt32LE(0, 0);
