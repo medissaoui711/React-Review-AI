@@ -7,6 +7,7 @@ import test from 'node:test';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { createHttpServer } from '../server/http.mjs';
+import { WorkspaceManager } from '../server/workspaces.mjs';
 
 const issuer = 'https://identity.example.test/';
 const resource = 'https://mcp.example.test/mcp';
@@ -180,6 +181,12 @@ test('ChatGPT-compatible tool metadata and OAuth challenges support discovery be
 
 test('valid provider-neutral OAuth access token authorizes all four read-only tools in an owned workspace', { timeout: 60000 }, async () => {
   await withOAuthServer(async ({ endpoint, token, workspaceArchive }) => {
+    const fixtureManager = new WorkspaceManager();
+    try {
+      await fixtureManager.createFromZip('fixture-user', workspaceArchive);
+    } finally {
+      await fixtureManager.close();
+    }
     const client = await connectClient(endpoint, token);
     const base = endpoint.slice(0, -'/mcp'.length);
     let workspaceId;
