@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { deflateRawSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -46,26 +47,29 @@ function zipCrc32(buffer) {
 function makeProjectZip(name, source) {
   const filename = Buffer.from(name, 'utf8');
   const content = Buffer.from(source, 'utf8');
+  const compressed = deflateRawSync(content);
   const crc = zipCrc32(content);
   const flags = 0x0800;
+  const method = 8;
   const local = Buffer.alloc(30);
   local.writeUInt32LE(0x04034b50, 0);
   local.writeUInt16LE(20, 4);
   local.writeUInt16LE(flags, 6);
-  local.writeUInt16LE(0, 8);
+  local.writeUInt16LE(method, 8);
   local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(content.length, 18);
+  local.writeUInt32LE(compressed.length, 18);
   local.writeUInt32LE(content.length, 22);
   local.writeUInt16LE(filename.length, 26);
   local.writeUInt16LE(0, 28);
+
   const central = Buffer.alloc(46);
   central.writeUInt32LE(0x02014b50, 0);
   central.writeUInt16LE((3 << 8) | 20, 4);
   central.writeUInt16LE(20, 6);
   central.writeUInt16LE(flags, 8);
-  central.writeUInt16LE(0, 10);
+  central.writeUInt16LE(method, 10);
   central.writeUInt32LE(crc, 16);
-  central.writeUInt32LE(content.length, 20);
+  central.writeUInt32LE(compressed.length, 20);
   central.writeUInt32LE(content.length, 24);
   central.writeUInt16LE(filename.length, 28);
   central.writeUInt16LE(0, 30);
@@ -73,7 +77,8 @@ function makeProjectZip(name, source) {
   central.writeUInt16LE(0, 34);
   central.writeUInt32LE(0o100644 * 0x10000, 38);
   central.writeUInt32LE(0, 42);
-  const centralOffset = local.length + filename.length + content.length;
+
+  const centralOffset = local.length + filename.length + compressed.length;
   const centralSize = central.length + filename.length;
   const end = Buffer.alloc(22);
   end.writeUInt32LE(0x06054b50, 0);
@@ -84,7 +89,7 @@ function makeProjectZip(name, source) {
   end.writeUInt32LE(centralSize, 12);
   end.writeUInt32LE(centralOffset, 16);
   end.writeUInt16LE(0, 20);
-  return Buffer.concat([local, filename, content, central, filename, end]);
+  return Buffer.concat([local, filename, compressed, central, filename, end]);
 }
 
 async function withOAuthServer(run) {
