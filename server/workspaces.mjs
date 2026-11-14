@@ -28,7 +28,7 @@ function safeArchivePath(rawName, maxDepth = 20) {
   if (!rawName || rawName.includes('\\') || rawName.includes('\0')) throw new Error('Archive contains an invalid path.');
   if (rawName.startsWith('/') || /^[a-zA-Z]:/.test(rawName)) throw new Error('Archive contains an absolute path.');
   const isDirectory = rawName.endsWith('/');
-  const normalized = isDirectory ? rawName.slice(0, -1) : rawName;
+  const normalized = (isDirectory ? rawName.slice(0, -1) : rawName).normalize('NFC');
   const segments = normalized.split('/');
   if (!normalized || segments.some(segment => !segment || segment === '.' || segment === '..')) {
     throw new Error('Archive contains a path traversal entry.');
