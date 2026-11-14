@@ -21,7 +21,7 @@ import {
 
 async function readBoundedArchiveBody(request, maxBytes) {
   const declaredLength = request.headers.get('content-length');
-  if (declaredLength && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
+  if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) {
     return new Response('Payload Too Large', { status: 413 });
   }
   if (!request.body) return Buffer.alloc(0);
