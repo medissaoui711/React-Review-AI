@@ -118,7 +118,7 @@ function readZipEntries(archive, limits) {
     if (totalBytes > limits.maxTotalBytes) throw new Error('Archive expands beyond the permitted total size.');
 
     entries.push({
-      ...safe, rawName, expectedCrc, compressedSize, uncompressedSize, method, localOffset, centralOffset
+      ...safe, rawName, flags, expectedCrc, compressedSize, uncompressedSize, method, localOffset, centralOffset
     });
     offset = end;
   }
@@ -136,7 +136,7 @@ function extractEntry(archive, entry) {
   const nameLength = archive.readUInt16LE(offset + 26);
   const extraLength = archive.readUInt16LE(offset + 28);
   const localName = new TextDecoder('utf-8', { fatal: true }).decode(archive.subarray(offset + 30, offset + 30 + nameLength));
-  if (localName !== entry.rawName || localMethod !== entry.method || localFlags !== archive.readUInt16LE(entry.localOffset + 6)) {
+  if (localName !== entry.rawName || localMethod !== entry.method || localFlags !== entry.flags) {
     throw new Error('Archive local and central headers do not match.');
   }
   const dataStart = offset + 30 + nameLength + extraLength;
